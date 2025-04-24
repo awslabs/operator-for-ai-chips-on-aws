@@ -1,0 +1,25 @@
+apiVersion: kmm.sigs.x-k8s.io/v1beta1
+kind: Module
+metadata:
+  name: moduleName
+  namespace: moduleNamespace
+spec:
+  moduleLoader:
+    container:
+      modprobe:
+        moduleName: neuron
+        firmwarePath: 
+      kernelMappings:
+        - regexp: "^.+$"
+          containerImage: driversImage
+          inTreeModulesToRemove:
+          - neuron
+          build:
+            buildArgs:
+              - name: DRIVERS_VERSION
+                value: driversVersion
+            dockerfileConfigMap:
+              name: dockerfile
+    serviceAccountName: "awslabs-gpu-operator-kmm-module-loader"
+  selector:
+    feature.node.kubernetes.io/pci-1D0F.present: "true"

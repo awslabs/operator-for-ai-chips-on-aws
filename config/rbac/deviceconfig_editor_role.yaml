@@ -1,0 +1,31 @@
+# permissions for end users to edit deviceconfigs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: deviceconfig-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: operator-for-ai-chips-on-aws
+    app.kubernetes.io/part-of: operator-for-ai-chips-on-aws
+    app.kubernetes.io/managed-by: kustomize
+  name: deviceconfig-editor-role
+rules:
+- apiGroups:
+  - k8s.aws
+  resources:
+  - deviceconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k8s.aws
+  resources:
+  - deviceconfigs/status
+  verbs:
+  - get

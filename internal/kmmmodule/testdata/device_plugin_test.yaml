@@ -1,0 +1,18 @@
+apiVersion: kmm.sigs.x-k8s.io/v1beta1
+kind: Module
+metadata:
+  name: moduleName
+  namespace: moduleNamespace
+spec:
+  devicePlugin:
+    serviceAccountName: "awslabs-gpu-operator-kmm-device-plugin"
+    container:
+      image: "public.ecr.aws/neuron/neuron-device-plugin:2.24.23.0"
+      volumeMounts:
+      - name: sys
+        mountPath: /sys
+    volumes:
+    - name: sys
+      hostPath:
+        path: /sys
+        type: Directory
