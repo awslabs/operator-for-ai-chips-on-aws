@@ -67,7 +67,7 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/rh-ecosystem-edge/kernel-module-management => github.com/rh-ecosystem-edge/kernel-module-management release-2.2
+replace github.com/rh-ecosystem-edge/kernel-module-management => github.com/rh-ecosystem-edge/kernel-module-management v0.0.0-20241212000000-1ab9afce9d98
 replace sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.17.3
 replace open-cluster-management.io/api => open-cluster-management.io/api v0.13.0
 replace go.uber.org/mock => go.uber.org/mock v0.4.0
