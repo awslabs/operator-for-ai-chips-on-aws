@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 )
 
 const (
@@ -92,24 +92,26 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 		driversImage = fmt.Sprintf(defaultDriversImageTemplate, driversVersion)
 	}
 
-	mod.Spec.ModuleLoader.Container = kmmv1beta1.ModuleLoaderContainerSpec{
-		Modprobe: kmmv1beta1.ModprobeSpec{
-			ModuleName:   gpuDriverModuleName,
-			FirmwarePath: imageFirmwarePath,
-		},
-		KernelMappings: []kmmv1beta1.KernelMapping{
-			{
-				Regexp:               "^.+$",
-				ContainerImage:       driversImage,
-				InTreeModulesToRemove: []string{gpuDriverModuleName,},
-				Build: &kmmv1beta1.Build{
-					DockerfileConfigMap: &v1.LocalObjectReference{
-						Name: getDockerfileCMName(devConfig),
-					},
-					BuildArgs: []kmmv1beta1.BuildArg{
-						{
-							Name:  "DRIVERS_VERSION",
-							Value: driversVersion,
+	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
+		Container: kmmv1beta1.ModuleLoaderContainerSpec{
+			Modprobe: kmmv1beta1.ModprobeSpec{
+				ModuleName:   gpuDriverModuleName,
+				FirmwarePath: imageFirmwarePath,
+			},
+			KernelMappings: []kmmv1beta1.KernelMapping{
+				{
+					Regexp:                "^.+$",
+					ContainerImage:        driversImage,
+					InTreeModulesToRemove: []string{gpuDriverModuleName},
+					Build: &kmmv1beta1.Build{
+						DockerfileConfigMap: &v1.LocalObjectReference{
+							Name: getDockerfileCMName(devConfig),
+						},
+						BuildArgs: []kmmv1beta1.BuildArg{
+							{
+								Name:  "DRIVERS_VERSION",
+								Value: driversVersion,
+							},
 						},
 					},
 				},

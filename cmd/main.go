@@ -30,7 +30,6 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	dcv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/cmd"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/config"
@@ -38,6 +37,7 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodelabeller"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
+	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 

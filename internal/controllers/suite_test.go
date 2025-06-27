@@ -19,9 +19,9 @@ package controllers
 import (
 	"testing"
 
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/test"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/test"
 	"k8s.io/apimachinery/pkg/runtime"
 	//+kubebuilder:scaffold:imports
 )
