@@ -19,13 +19,13 @@ package nodemetrics
 import (
 	"fmt"
 
-	"github.com/rh-ecosystem-edge/kernel-module-management/pkg/labels"
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	"github.com/rh-ecosystem-edge/kernel-module-management/pkg/labels"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -79,8 +79,8 @@ func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *
 						Image:           metricsImage,
 						ImagePullPolicy: v1.PullAlways,
 						SecurityContext: &v1.SecurityContext{
-							Privileged: pointer.Bool(true),
-							RunAsUser:  pointer.Int64(0),
+							Privileged: ptr.To[bool](true),
+							RunAsUser:  ptr.To[int64](0),
 						},
 						VolumeMounts: volumesMounts,
 						Ports:        ports,
