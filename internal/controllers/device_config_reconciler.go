@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -64,7 +65,9 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&kmmv1beta1.Module{}).
 		Owns(&appsv1.DaemonSet{}).
 		Named(DeviceConfigReconcilerName).
-		Complete(r)
+		Complete(
+			reconcile.AsReconciler[*awslabsv1alpha1.DeviceConfig](mgr.GetClient(), r),
+		)
 }
 
 //+kubebuilder:rbac:groups=.k8s.aws,resources=deviceconfigs,verbs=get;list;watch;create;patch;update
@@ -74,57 +77,46 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=create;delete;get;list;patch;watch;create
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=create;delete;get;list;patch;watch
 
-func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) (ctrl.Result, error) {
 	res := ctrl.Result{}
 
-	logger := log.FromContext(ctx)
-
-	devConfig, err := r.helper.getRequestedDeviceConfig(ctx, req.NamespacedName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			logger.Info("Module deleted")
-			return ctrl.Result{}, nil
-		}
-
-		return res, fmt.Errorf("failed to get the requested %s KMMO CR: %w", req.NamespacedName, err)
-	}
-
+	logger := log.FromContext(ctx).WithValues("namespace", devConfig.Namespace, "name", devConfig.Name)
 	if devConfig.GetDeletionTimestamp() != nil {
 		// DeviceConfig is being deleted
-		err = r.helper.finalizeDeviceConfig(ctx, devConfig)
+		err := r.helper.finalizeDeviceConfig(ctx, devConfig)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to finalize DeviceConfig %s: %v", req.NamespacedName, err)
+			return ctrl.Result{}, fmt.Errorf("failed to finalize DeviceConfig: %v", err)
 		}
 		return ctrl.Result{}, nil
 	}
 
-	err = r.helper.setFinalizer(ctx, devConfig)
+	err := r.helper.setFinalizer(ctx, devConfig)
 	if err != nil {
-		return res, fmt.Errorf("failed to set finalizer for DeviceConfig %s: %v", req.NamespacedName, err)
+		return res, fmt.Errorf("failed to set finalizer for DeviceConfig: %v", err)
 	}
 
 	logger.Info("start build configmap reconciliation")
 	err = r.helper.handleBuildConfigMap(ctx, devConfig)
 	if err != nil {
-		return res, fmt.Errorf("failed to handle build ConfigMap for DeviceConfig %s: %v", req.NamespacedName, err)
+		return res, fmt.Errorf("failed to handle build ConfigMap for DeviceConfig: %v", err)
 	}
 
 	logger.Info("start KMM reconciliation")
 	err = r.helper.handleKMMModule(ctx, devConfig)
 	if err != nil {
-		return res, fmt.Errorf("failed to handle KMM module for DeviceConfig %s: %v", req.NamespacedName, err)
+		return res, fmt.Errorf("failed to handle KMM module for DeviceConfig: %v", err)
 	}
 
 	logger.Info("start node labeller reconciliation")
 	err = r.helper.handleNodeLabeller(ctx, devConfig)
 	if err != nil {
-		return res, fmt.Errorf("failed to handle node labeller for DeviceConfig %s: %v", req.NamespacedName, err)
+		return res, fmt.Errorf("failed to handle node labeller for DeviceConfig: %v", err)
 	}
 
 	logger.Info("start metrics reconciliation")
 	err = r.helper.handleNodeMetrics(ctx, devConfig)
 	if err != nil {
-		return res, fmt.Errorf("failed to handle node metrics for DeviceConfig %s: %v", req.NamespacedName, err)
+		return res, fmt.Errorf("failed to handle node metrics for DeviceConfig: %v", err)
 	}
 	// [TODO] add status handling for DeviceConfig
 	return res, nil
@@ -132,7 +124,6 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 //go:generate mockgen -source=device_config_reconciler.go -package=controllers -destination=mock_device_config_reconciler.go deviceConfigReconcilerHelperAPI
 type deviceConfigReconcilerHelperAPI interface {
-	getRequestedDeviceConfig(ctx context.Context, namespacedName types.NamespacedName) (*awslabsv1alpha1.DeviceConfig, error)
 	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
@@ -158,15 +149,6 @@ func newDeviceConfigReconcilerHelper(client client.Client,
 		nlHandler:  nlHandler,
 		nmHandler:  nmHandler,
 	}
-}
-
-func (dcrh *deviceConfigReconcilerHelper) getRequestedDeviceConfig(ctx context.Context, namespacedName types.NamespacedName) (*awslabsv1alpha1.DeviceConfig, error) {
-	devConfig := awslabsv1alpha1.DeviceConfig{}
-
-	if err := dcrh.client.Get(ctx, namespacedName, &devConfig); err != nil {
-		return nil, fmt.Errorf("failed to get DeviceConfig %s: %w", namespacedName, err)
-	}
-	return &devConfig, nil
 }
 
 func (dcrh *deviceConfigReconcilerHelper) setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {

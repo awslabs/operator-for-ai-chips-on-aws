@@ -14,7 +14,6 @@ import (
 
 	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
 	gomock "go.uber.org/mock/gomock"
-	types "k8s.io/apimachinery/pkg/types"
 )
 
 // MockdeviceConfigReconcilerHelperAPI is a mock of deviceConfigReconcilerHelperAPI interface.
@@ -52,21 +51,6 @@ func (m *MockdeviceConfigReconcilerHelperAPI) finalizeDeviceConfig(ctx context.C
 func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) finalizeDeviceConfig(ctx, devConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "finalizeDeviceConfig", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).finalizeDeviceConfig), ctx, devConfig)
-}
-
-// getRequestedDeviceConfig mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) getRequestedDeviceConfig(ctx context.Context, namespacedName types.NamespacedName) (*v1alpha1.DeviceConfig, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "getRequestedDeviceConfig", ctx, namespacedName)
-	ret0, _ := ret[0].(*v1alpha1.DeviceConfig)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// getRequestedDeviceConfig indicates an expected call of getRequestedDeviceConfig.
-func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) getRequestedDeviceConfig(ctx, namespacedName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "getRequestedDeviceConfig", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).getRequestedDeviceConfig), ctx, namespacedName)
 }
 
 // handleBuildConfigMap mocks base method.

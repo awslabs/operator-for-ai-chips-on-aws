@@ -60,24 +60,13 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	ctx := context.Background()
-	nn := types.NamespacedName{
-		Name:      devConfigName,
-		Namespace: devConfigNamespace,
-	}
-	req := ctrl.Request{NamespacedName: nn}
 
-	DescribeTable("reconciler error flow", func(getDeviceError,
-		setFinalizerError,
+	DescribeTable("reconciler error flow", func(setFinalizerError,
 		buildConfigMapError,
 		handleKMMModuleError,
 		handleNodeLabellerError,
 		handleMetricsError bool) {
 		devConfig := &awslabsv1alpha1.DeviceConfig{}
-		if getDeviceError {
-			mockHelper.EXPECT().getRequestedDeviceConfig(ctx, nn).Return(nil, fmt.Errorf("some error"))
-			goto executeTestFunction
-		}
-		mockHelper.EXPECT().getRequestedDeviceConfig(ctx, req.NamespacedName).Return(devConfig, nil)
 		if setFinalizerError {
 			mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(fmt.Errorf("some error"))
 			goto executeTestFunction
@@ -106,86 +95,38 @@ var _ = Describe("Reconcile", func() {
 
 	executeTestFunction:
 
-		res, err := dcr.Reconcile(ctx, req)
-		if getDeviceError || setFinalizerError || buildConfigMapError || handleKMMModuleError || handleNodeLabellerError || handleMetricsError {
+		res, err := dcr.Reconcile(ctx, devConfig)
+		if setFinalizerError || buildConfigMapError || handleKMMModuleError || handleNodeLabellerError || handleMetricsError {
 			Expect(err).To(HaveOccurred())
 		} else {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).To(Equal(ctrl.Result{}))
 		}
 	},
-		Entry("good flow, no requeue", false, false, false, false, false, false),
-		Entry("getDeviceConfigFailed", true, false, false, false, false, false),
-		Entry("setFinalizer failed", false, true, false, false, false, false),
-		Entry("buildConfigMap failed", false, false, true, false, false, false),
-		Entry("handleKMMModule failed", false, false, false, true, false, false),
-		Entry("handleNodeLabeller failed", false, false, false, false, true, false),
-		Entry("handleMetrics failed", false, false, false, false, false, true),
+		Entry("good flow, no requeue", false, false, false, false, false),
+		Entry("setFinalizer failed", true, false, false, false, false),
+		Entry("buildConfigMap failed", false, true, false, false, false),
+		Entry("handleKMMModule failed", false, false, true, false, false),
+		Entry("handleNodeLabeller failed", false, false, false, true, false),
+		Entry("handleMetrics failed", false, false, false, false, true),
 	)
 
 	It("device config finalization", func() {
 		devConfig := &awslabsv1alpha1.DeviceConfig{}
 		devConfig.SetDeletionTimestamp(&metav1.Time{})
 
-		mockHelper.EXPECT().getRequestedDeviceConfig(ctx, req.NamespacedName).Return(devConfig, nil)
 		mockHelper.EXPECT().finalizeDeviceConfig(ctx, devConfig).Return(nil)
 
-		res, err := dcr.Reconcile(ctx, req)
+		res, err := dcr.Reconcile(ctx, devConfig)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		mockHelper.EXPECT().getRequestedDeviceConfig(ctx, req.NamespacedName).Return(devConfig, nil)
 		mockHelper.EXPECT().finalizeDeviceConfig(ctx, devConfig).Return(fmt.Errorf("some error"))
 
-		res, err = dcr.Reconcile(ctx, req)
+		res, err = dcr.Reconcile(ctx, devConfig)
 		Expect(err).To(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
-	})
-})
-
-var _ = Describe("getLabelsPerModules", func() {
-	var (
-		kubeClient *mock_client.MockClient
-		dcrh       deviceConfigReconcilerHelperAPI
-	)
-
-	BeforeEach(func() {
-		ctrl := gomock.NewController(GinkgoT())
-		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil)
-	})
-
-	ctx := context.Background()
-	nn := types.NamespacedName{
-		Name:      devConfigName,
-		Namespace: devConfigNamespace,
-	}
-
-	It("good flow", func() {
-		expectedDevConfig := awslabsv1alpha1.DeviceConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      nn.Name,
-				Namespace: nn.Namespace,
-			},
-		}
-		kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Do(
-			func(_ interface{}, _ interface{}, devConfig *awslabsv1alpha1.DeviceConfig, _ ...client.GetOption) {
-				devConfig.Name = nn.Name
-				devConfig.Namespace = nn.Namespace
-			},
-		)
-		res, err := dcrh.getRequestedDeviceConfig(ctx, nn)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(*res).To(Equal(expectedDevConfig))
-	})
-
-	It("error flow", func() {
-		kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Return(fmt.Errorf("some error"))
-
-		res, err := dcrh.getRequestedDeviceConfig(ctx, nn)
-		Expect(err).To(HaveOccurred())
-		Expect(res).To(BeNil())
 	})
 })
 
