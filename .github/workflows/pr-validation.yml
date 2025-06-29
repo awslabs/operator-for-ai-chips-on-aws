@@ -3,7 +3,6 @@ name: Pull Request Validation
 on:
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   go-checks:
@@ -32,9 +31,6 @@ jobs:
       uses: golangci/golangci-lint-action@v8
       with:
         version: latest
-        args: --timeout=5m --fast
-        only-new-issues: true
-        skip-cache: false
     
     - name: Go Build
       run: go build -v ./...
