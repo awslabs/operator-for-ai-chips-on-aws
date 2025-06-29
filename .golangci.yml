@@ -1,0 +1,9 @@
+run:
+  timeout: 5m
+
+linters:
+  disable:
+    - gosec      # slow security checks
+    - cyclop     # slow complexity checks
+    - funlen     # slow function length checks
+    - gocognit   # slow cognitive complexity
