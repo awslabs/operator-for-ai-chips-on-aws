@@ -1,0 +1,41 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+  pull_request_target:
+    branches: [ main ]
+
+jobs:
+  go-checks:
+    runs-on: ubuntu-latest
+    env:
+      GOSUMDB: sum.golang.org
+      GOTOOLCHAIN: auto
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: 'go.mod'
+    
+    - name: Go Format Check
+      run: |
+        unformatted=$(gofmt -s -l .)
+        if [ -n "$unformatted" ]; then
+          echo "::error::The following files are not formatted:"
+          echo "$unformatted"
+          exit 1
+        fi
+    
+    - name: Go Lint
+      uses: golangci/golangci-lint-action@v8
+      with:
+        version: latest
+    
+    - name: Go Build
+      run: go build -v ./...
+    
+    - name: Go Test
+      run: go test -v ./...
