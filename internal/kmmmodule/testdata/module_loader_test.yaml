@@ -14,12 +14,6 @@ spec:
           containerImage: driversImage
           inTreeModulesToRemove:
           - neuron
-          build:
-            buildArgs:
-              - name: DRIVERS_VERSION
-                value: driversVersion
-            dockerfileConfigMap:
-              name: dockerfile
     serviceAccountName: "awslabs-gpu-operator-kmm-module-loader"
   selector:
     feature.node.kubernetes.io/pci-1D0F.present: "true"

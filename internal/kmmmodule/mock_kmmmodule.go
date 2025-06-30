@@ -14,7 +14,6 @@ import (
 	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
 	v1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
-	v1 "k8s.io/api/core/v1"
 )
 
 // MockKMMModuleAPI is a mock of KMMModuleAPI interface.
@@ -38,20 +37,6 @@ func NewMockKMMModuleAPI(ctrl *gomock.Controller) *MockKMMModuleAPI {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockKMMModuleAPI) EXPECT() *MockKMMModuleAPIMockRecorder {
 	return m.recorder
-}
-
-// SetBuildConfigMapAsDesired mocks base method.
-func (m *MockKMMModuleAPI) SetBuildConfigMapAsDesired(buildCM *v1.ConfigMap, devConfig *v1alpha1.DeviceConfig) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetBuildConfigMapAsDesired", buildCM, devConfig)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetBuildConfigMapAsDesired indicates an expected call of SetBuildConfigMapAsDesired.
-func (mr *MockKMMModuleAPIMockRecorder) SetBuildConfigMapAsDesired(buildCM, devConfig any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBuildConfigMapAsDesired", reflect.TypeOf((*MockKMMModuleAPI)(nil).SetBuildConfigMapAsDesired), buildCM, devConfig)
 }
 
 // SetKMMModuleAsDesired mocks base method.

@@ -41,7 +41,11 @@ var _ = Describe("setKMMModuleLoader", func() {
 				APIVersion: "kmm.sigs.x-k8s.io/v1beta1",
 			},
 		}
-		input := awslabsv1alpha1.DeviceConfig{}
+		input := awslabsv1alpha1.DeviceConfig{
+			Spec: awslabsv1alpha1.DeviceConfigSpec{
+				DriversImage: "some image:tag",
+			},
+		}
 
 		expectedYAMLFile, err := os.ReadFile("testdata/module_loader_test.yaml")
 		Expect(err).To(BeNil())
@@ -54,9 +58,7 @@ var _ = Describe("setKMMModuleLoader", func() {
 		fmt.Printf("<%s>\n", expectedMod.Spec.ModuleLoader.Container.Modprobe.ModuleName)
 		Expect(len(expectedMod.Spec.ModuleLoader.Container.KernelMappings)).To(Equal(1))
 
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = fmt.Sprintf(defaultDriversImageTemplate, defaultDriversVersion)
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].Build.DockerfileConfigMap.Name = "dockerfile-" + input.Name
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].Build.BuildArgs[0].Value = defaultDriversVersion
+		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some image:tag$KERNEL_VERSION"
 		expectedMod.Spec.Selector = map[string]string{"feature.node.kubernetes.io/pci-1D0F.present": "true"}
 
 		err = setKMMModuleLoader(&mod, &input)
@@ -97,9 +99,7 @@ var _ = Describe("setKMMModuleLoader", func() {
 		fmt.Printf("<%s>\n", expectedMod.Spec.ModuleLoader.Container.Modprobe.ModuleName)
 		Expect(len(expectedMod.Spec.ModuleLoader.Container.KernelMappings)).To(Equal(1))
 
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some driver image"
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].Build.DockerfileConfigMap.Name = "dockerfile-" + input.Name
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].Build.BuildArgs[0].Value = "some driver version"
+		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some driver image$KERNEL_VERSION"
 		expectedMod.Spec.Selector = map[string]string{"some label": "some label value"}
 		expectedMod.Spec.ImageRepoSecret = &v1.LocalObjectReference{Name: "image repo secret name"}
 

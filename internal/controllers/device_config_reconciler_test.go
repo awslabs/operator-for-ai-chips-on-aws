@@ -30,7 +30,6 @@ import (
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -62,7 +61,6 @@ var _ = Describe("Reconcile", func() {
 	ctx := context.Background()
 
 	DescribeTable("reconciler error flow", func(setFinalizerError,
-		buildConfigMapError,
 		handleKMMModuleError,
 		handleNodeLabellerError,
 		handleMetricsError bool) {
@@ -72,11 +70,6 @@ var _ = Describe("Reconcile", func() {
 			goto executeTestFunction
 		}
 		mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(nil)
-		if buildConfigMapError {
-			mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(fmt.Errorf("some error"))
-			goto executeTestFunction
-		}
-		mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(nil)
 		if handleKMMModuleError {
 			mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(fmt.Errorf("some error"))
 			goto executeTestFunction
@@ -96,19 +89,18 @@ var _ = Describe("Reconcile", func() {
 	executeTestFunction:
 
 		res, err := dcr.Reconcile(ctx, devConfig)
-		if setFinalizerError || buildConfigMapError || handleKMMModuleError || handleNodeLabellerError || handleMetricsError {
+		if setFinalizerError || handleKMMModuleError || handleNodeLabellerError || handleMetricsError {
 			Expect(err).To(HaveOccurred())
 		} else {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).To(Equal(ctrl.Result{}))
 		}
 	},
-		Entry("good flow, no requeue", false, false, false, false, false),
-		Entry("setFinalizer failed", true, false, false, false, false),
-		Entry("buildConfigMap failed", false, true, false, false, false),
-		Entry("handleKMMModule failed", false, false, true, false, false),
-		Entry("handleNodeLabeller failed", false, false, false, true, false),
-		Entry("handleMetrics failed", false, false, false, false, true),
+		Entry("good flow, no requeue", false, false, false, false),
+		Entry("setFinalizer failed", true, false, false, false),
+		Entry("handleKMMModule failed", false, true, false, false),
+		Entry("handleNodeLabeller failed", false, false, true, false),
+		Entry("handleMetrics failed", false, false, false, true),
 	)
 
 	It("device config finalization", func() {
@@ -352,67 +344,6 @@ var _ = Describe("handleKMMModule", func() {
 		)
 
 		err := dcrh.handleKMMModule(ctx, devConfig)
-		Expect(err).ToNot(HaveOccurred())
-	})
-})
-
-var _ = Describe("handleBuildConfigMap", func() {
-	var (
-		kubeClient *mock_client.MockClient
-		kmmHelper  *kmmmodule.MockKMMModuleAPI
-		dcrh       deviceConfigReconcilerHelperAPI
-	)
-
-	BeforeEach(func() {
-		ctrl := gomock.NewController(GinkgoT())
-		kubeClient = mock_client.NewMockClient(ctrl)
-		kmmHelper = kmmmodule.NewMockKMMModuleAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil)
-	})
-
-	ctx := context.Background()
-	devConfig := &awslabsv1alpha1.DeviceConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      devConfigName,
-			Namespace: devConfigNamespace,
-		},
-	}
-
-	It("BuildConfig does not exist", func() {
-		newBuildCM := &v1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: devConfig.Namespace,
-				Name:      "dockerfile-" + devConfig.Name,
-			},
-		}
-		gomock.InOrder(
-			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "whatever")),
-			kmmHelper.EXPECT().SetBuildConfigMapAsDesired(newBuildCM, devConfig).Return(nil),
-			kubeClient.EXPECT().Create(ctx, gomock.Any()).Return(nil),
-		)
-
-		err := dcrh.handleBuildConfigMap(ctx, devConfig)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
-	It("BuildConfig exists", func() {
-		existingBuildCM := &v1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: devConfig.Namespace,
-				Name:      "dockerfile-" + devConfig.Name,
-			},
-		}
-		gomock.InOrder(
-			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Do(
-				func(_ interface{}, _ interface{}, buildCM *v1.ConfigMap, _ ...client.GetOption) {
-					buildCM.Name = "dockerfile-" + devConfig.Name
-					buildCM.Namespace = devConfig.Namespace
-				},
-			),
-			kmmHelper.EXPECT().SetBuildConfigMapAsDesired(existingBuildCM, devConfig).Return(nil),
-		)
-
-		err := dcrh.handleBuildConfigMap(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
