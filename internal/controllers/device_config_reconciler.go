@@ -26,7 +26,6 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -95,12 +94,6 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 		return res, fmt.Errorf("failed to set finalizer for DeviceConfig: %v", err)
 	}
 
-	logger.Info("start build configmap reconciliation")
-	err = r.helper.handleBuildConfigMap(ctx, devConfig)
-	if err != nil {
-		return res, fmt.Errorf("failed to handle build ConfigMap for DeviceConfig: %v", err)
-	}
-
 	logger.Info("start KMM reconciliation")
 	err = r.helper.handleKMMModule(ctx, devConfig)
 	if err != nil {
@@ -127,7 +120,6 @@ type deviceConfigReconcilerHelperAPI interface {
 	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	handleBuildConfigMap(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleNodeLabeller(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 }
@@ -215,26 +207,6 @@ func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Conte
 	return dcrh.client.Delete(ctx, &mod)
 }
 
-func (dcrh *deviceConfigReconcilerHelper) handleBuildConfigMap(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
-	buildDockerfileCM := &v1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: devConfig.Namespace,
-			Name:      getDockerfileCMName(devConfig),
-		},
-	}
-
-	logger := log.FromContext(ctx)
-	opRes, err := controllerutil.CreateOrPatch(ctx, dcrh.client, buildDockerfileCM, func() error {
-		return dcrh.kmmHandler.SetBuildConfigMapAsDesired(buildDockerfileCM, devConfig)
-	})
-
-	if err == nil {
-		logger.Info("Reconciled KMM build dockerfile ConfigMap", "name", buildDockerfileCM.Name, "result", opRes)
-	}
-
-	return err
-}
-
 func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
 	kmmMod := &kmmv1beta1.Module{
 		ObjectMeta: metav1.ObjectMeta{
@@ -285,8 +257,4 @@ func (dcrh *deviceConfigReconcilerHelper) handleNodeMetrics(ctx context.Context,
 	}
 
 	return err
-}
-
-func getDockerfileCMName(devConfig *awslabsv1alpha1.DeviceConfig) string {
-	return "dockerfile-" + devConfig.Name
 }
