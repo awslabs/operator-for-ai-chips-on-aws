@@ -82,7 +82,6 @@ var _ = Describe("setKMMModuleLoader", func() {
 			Spec: awslabsv1alpha1.DeviceConfigSpec{
 				UseInTreeDrivers: false,
 				DriversImage:     "some driver image",
-				DriversVersion:   "some driver version",
 				Selector:         map[string]string{"some label": "some label value"},
 				ImageRepoSecret:  &v1.LocalObjectReference{Name: "image repo secret name"},
 			},
