@@ -30,13 +30,8 @@ type DeviceConfigSpec struct {
 	// if the in-tree driver should be used instead of OOT drivers
 	UseInTreeDrivers bool `json:"useInTreeDrivers,omitempty"`
 
-	// defines image that includes drivers and firmware blobs
-	// +optional
+	// defines image that includes drivers
 	DriversImage string `json:"driversImage,omitempty"`
-
-	// version of the drivers source code, can be used as part of image of dockerfile source image
-	// +optional
-	DriversVersion string `json:"driversVersion,omitempty"`
 
 	// device plugin image
 	// +optional
