@@ -5,23 +5,6 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - .k8s.aws
-  resources:
-  - deviceconfigs
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - .k8s.aws
-  resources:
-  - deviceconfigs/finalizers
-  verbs:
-  - update
-- apiGroups:
   - apps
   resources:
   - daemonsets
@@ -43,6 +26,23 @@ rules:
   - list
   - patch
   - watch
+- apiGroups:
+  - k8s.aws
+  resources:
+  - deviceconfigs
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k8s.aws
+  resources:
+  - deviceconfigs/finalizers
+  verbs:
+  - update
 - apiGroups:
   - kmm.sigs.x-k8s.io
   resources:

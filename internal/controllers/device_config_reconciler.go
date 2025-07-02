@@ -69,9 +69,9 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		)
 }
 
-//+kubebuilder:rbac:groups=.k8s.aws,resources=deviceconfigs,verbs=get;list;watch;create;patch;update
+//+kubebuilder:rbac:groups=k8s.aws,resources=deviceconfigs,verbs=get;list;watch;create;patch;update
 //+kubebuilder:rbac:groups=kmm.sigs.x-k8s.io,resources=modules,verbs=get;list;watch;create;patch;update;delete
-//+kubebuilder:rbac:groups=.k8s.aws,resources=deviceconfigs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=k8s.aws,resources=deviceconfigs/finalizers,verbs=update
 //+kubebuilder:rbac:groups=kmm.sigs.x-k8s.io,resources=modules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=create;delete;get;list;patch;watch;create
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=create;delete;get;list;patch;watch
