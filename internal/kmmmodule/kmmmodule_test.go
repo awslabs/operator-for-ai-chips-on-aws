@@ -58,8 +58,8 @@ var _ = Describe("setKMMModuleLoader", func() {
 		fmt.Printf("<%s>\n", expectedMod.Spec.ModuleLoader.Container.Modprobe.ModuleName)
 		Expect(len(expectedMod.Spec.ModuleLoader.Container.KernelMappings)).To(Equal(1))
 
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some image:tag$KERNEL_VERSION"
-		expectedMod.Spec.Selector = map[string]string{"feature.node.kubernetes.io/pci-1D0F.present": "true"}
+		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some image:tag-$KERNEL_VERSION"
+		expectedMod.Spec.Selector = map[string]string{"feature.node.kubernetes.io/pci-1d0f.present": "true"}
 
 		err = setKMMModuleLoader(&mod, &input)
 
@@ -98,7 +98,7 @@ var _ = Describe("setKMMModuleLoader", func() {
 		fmt.Printf("<%s>\n", expectedMod.Spec.ModuleLoader.Container.Modprobe.ModuleName)
 		Expect(len(expectedMod.Spec.ModuleLoader.Container.KernelMappings)).To(Equal(1))
 
-		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some driver image$KERNEL_VERSION"
+		expectedMod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage = "some driver image-$KERNEL_VERSION"
 		expectedMod.Spec.Selector = map[string]string{"some label": "some label value"}
 		expectedMod.Spec.ImageRepoSecret = &v1.LocalObjectReference{Name: "image repo secret name"}
 

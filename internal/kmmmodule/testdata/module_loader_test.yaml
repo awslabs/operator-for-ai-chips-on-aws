@@ -16,4 +16,4 @@ spec:
           - neuron
     serviceAccountName: "awslabs-gpu-operator-kmm-module-loader"
   selector:
-    feature.node.kubernetes.io/pci-1D0F.present: "true"
+    feature.node.kubernetes.io/pci-1d0f.present: "true"

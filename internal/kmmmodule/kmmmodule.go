@@ -61,7 +61,7 @@ func (km *kmmModule) SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *aw
 }
 
 func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.DeviceConfig) error {
-	driversImage := devConfig.Spec.DriversImage + "$KERNEL_VERSION"
+	driversImage := devConfig.Spec.DriversImage + "-$KERNEL_VERSION"
 
 	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
 		Container: kmmv1beta1.ModuleLoaderContainerSpec{
