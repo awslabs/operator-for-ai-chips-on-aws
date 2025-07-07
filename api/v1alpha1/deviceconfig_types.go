@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	PCIVendorID = "1D0F"
+	PCIVendorID = "1d0f"
 )
 
 // DeviceConfigSpec describes how the AMD GPU operator should enable AMD GPU device for customer's use.
