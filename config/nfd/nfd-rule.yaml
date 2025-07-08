@@ -14,5 +14,11 @@ spec:
               matchExpressions:
                 vendor: {op: In, value: ["1d0f"]}
                 device: {op: In, value: [
-                  "7264", # Inferentia2
+                  "7064",
+                  "7065"
+                  "7066"
+                  "7067"
+                  "7164",
+                  "7264",
+                  "7364",
                 ]}
