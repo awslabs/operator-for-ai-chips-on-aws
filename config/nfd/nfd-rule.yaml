@@ -1,0 +1,18 @@
+apiVersion: nfd.openshift.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: neuron-nfd-rule
+  namespace: ai-operator-on-aws
+spec:
+  rules:
+    - name: neuron-device
+      labels:
+        feature.node.kubernetes.io/aws-neuron: "true"
+      matchAny:
+        - matchFeatures:
+            - feature: pci.device
+              matchExpressions:
+                vendor: {op: In, value: ["1d0f"]}
+                device: {op: In, value: [
+                  "7264", # Inferentia2
+                ]}
