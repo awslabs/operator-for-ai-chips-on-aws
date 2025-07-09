@@ -93,6 +93,16 @@ func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 		ServiceAccountName: "awslabs-gpu-operator-kmm-device-plugin",
 		Container: kmmv1beta1.DevicePluginContainerSpec{
 			Image: devicePluginImage,
+			Env: []v1.EnvVar{
+				{
+					Name: "NODE_NAME",
+					ValueFrom: &v1.EnvVarSource{
+						FieldRef: &v1.ObjectFieldSelector{
+							FieldPath: "spec.nodeName",
+						},
+					},
+				},
+			},
 			VolumeMounts: []v1.VolumeMount{
 				{
 					Name:      "sys",
