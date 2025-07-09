@@ -30,8 +30,7 @@ import (
 )
 
 const (
-	gpuDriverModuleName      = "neuron"
-	defaultDevicePluginImage = "public.ecr.aws/neuron/neuron-device-plugin:2.24.23.0"
+	gpuDriverModuleName = "neuron"
 )
 
 //go:generate mockgen -source=kmmmodule.go -package=kmmmodule -destination=mock_kmmmodule.go KMMModuleAPI
@@ -85,9 +84,6 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 
 func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.DeviceConfig) {
 	devicePluginImage := devConfig.Spec.DevicePluginImage
-	if devicePluginImage == "" {
-		devicePluginImage = defaultDevicePluginImage
-	}
 	hostPathDirectory := v1.HostPathDirectory
 	mod.Spec.DevicePlugin = &kmmv1beta1.DevicePluginSpec{
 		ServiceAccountName: "awslabs-gpu-operator-kmm-device-plugin",
