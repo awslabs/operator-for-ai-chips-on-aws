@@ -122,7 +122,11 @@ var _ = Describe("setKMMDevicePlugin", func() {
 			},
 		}
 
-		input := awslabsv1alpha1.DeviceConfig{}
+		input := awslabsv1alpha1.DeviceConfig{
+			Spec: awslabsv1alpha1.DeviceConfigSpec{
+				DevicePluginImage: "some device plugin image",
+			},
+		}
 
 		expectedYAMLFile, err := os.ReadFile("testdata/device_plugin_test.yaml")
 		Expect(err).To(BeNil())
@@ -131,6 +135,7 @@ var _ = Describe("setKMMDevicePlugin", func() {
 		Expect(err).To(BeNil())
 		err = yaml.Unmarshal(expectedJSON, &expectedMod)
 		Expect(err).To(BeNil())
+		expectedMod.Spec.DevicePlugin.Container.Image = "some device plugin image"
 
 		setKMMDevicePlugin(&mod, &input)
 

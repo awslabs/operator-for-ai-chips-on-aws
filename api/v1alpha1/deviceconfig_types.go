@@ -31,10 +31,11 @@ type DeviceConfigSpec struct {
 	UseInTreeDrivers bool `json:"useInTreeDrivers,omitempty"`
 
 	// defines image that includes drivers
+	// +kubebuilder:validation:Required
 	DriversImage string `json:"driversImage,omitempty"`
 
 	// device plugin image
-	// +optional
+	// +kubebuilder:validation:Required
 	DevicePluginImage string `json:"devicePluginImage,omitempty"`
 
 	// pull secrets used for pull/setting images used by operator
