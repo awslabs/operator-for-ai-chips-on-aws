@@ -22,7 +22,6 @@ import (
 
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
-	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodelabeller"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -49,9 +48,8 @@ type DeviceConfigReconciler struct {
 func NewDeviceConfigReconciler(
 	client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
-	nlHandler nodelabeller.NodeLabeller,
 	nmHandler nodemetrics.NodeMetrics) *DeviceConfigReconciler {
-	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, nlHandler, nmHandler)
+	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, nmHandler)
 	return &DeviceConfigReconciler{
 		helper: helper,
 	}
@@ -100,12 +98,6 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 		return res, fmt.Errorf("failed to handle KMM module for DeviceConfig: %v", err)
 	}
 
-	logger.Info("start node labeller reconciliation")
-	err = r.helper.handleNodeLabeller(ctx, devConfig)
-	if err != nil {
-		return res, fmt.Errorf("failed to handle node labeller for DeviceConfig: %v", err)
-	}
-
 	logger.Info("start metrics reconciliation")
 	err = r.helper.handleNodeMetrics(ctx, devConfig)
 	if err != nil {
@@ -120,25 +112,21 @@ type deviceConfigReconcilerHelperAPI interface {
 	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	handleNodeLabeller(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 }
 
 type deviceConfigReconcilerHelper struct {
 	client     client.Client
 	kmmHandler kmmmodule.KMMModuleAPI
-	nlHandler  nodelabeller.NodeLabeller
 	nmHandler  nodemetrics.NodeMetrics
 }
 
 func newDeviceConfigReconcilerHelper(client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
-	nlHandler nodelabeller.NodeLabeller,
 	nmHandler nodemetrics.NodeMetrics) deviceConfigReconcilerHelperAPI {
 	return &deviceConfigReconcilerHelper{
 		client:     client,
 		kmmHandler: kmmHandler,
-		nlHandler:  nlHandler,
 		nmHandler:  nmHandler,
 	}
 }
@@ -156,29 +144,13 @@ func (dcrh *deviceConfigReconcilerHelper) setFinalizer(ctx context.Context, devC
 func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
 	logger := log.FromContext(ctx)
 
-	nlDS := appsv1.DaemonSet{}
-	namespacedName := types.NamespacedName{
-		Namespace: devConfig.Namespace,
-		Name:      devConfig.Name + "-node-labeller",
-	}
-
-	err := dcrh.client.Get(ctx, namespacedName, &nlDS)
-	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get nodelabeller daemonset %s: %v", namespacedName, err)
-		}
-	} else {
-		logger.Info("deleting nodelabeller daemonset", "daemonset", namespacedName)
-		return dcrh.client.Delete(ctx, &nlDS)
-	}
-
 	nmDS := appsv1.DaemonSet{}
-	namespacedName = types.NamespacedName{
+	namespacedName := types.NamespacedName{
 		Namespace: devConfig.Namespace,
 		Name:      devConfig.Name + "-node-metrics",
 	}
 
-	err = dcrh.client.Get(ctx, namespacedName, &nmDS)
+	err := dcrh.client.Get(ctx, namespacedName, &nmDS)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get nodemetrics daemonset %s: %v", namespacedName, err)
@@ -225,22 +197,6 @@ func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, d
 
 	return err
 
-}
-
-func (dcrh *deviceConfigReconcilerHelper) handleNodeLabeller(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
-	ds := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-node-labeller"},
-	}
-	logger := log.FromContext(ctx)
-	opRes, err := controllerutil.CreateOrPatch(ctx, dcrh.client, ds, func() error {
-		return dcrh.nlHandler.SetNodeLabellerAsDesired(ds, devConfig)
-	})
-
-	if err == nil {
-		logger.Info("Reconciled node labeller", "namespace", ds.Namespace, "name", ds.Name, "result", opRes)
-	}
-
-	return err
 }
 
 func (dcrh *deviceConfigReconcilerHelper) handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
