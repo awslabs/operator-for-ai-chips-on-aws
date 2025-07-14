@@ -35,7 +35,6 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/config"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/controllers"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
-	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodelabeller"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	//+kubebuilder:scaffold:imports
@@ -89,12 +88,10 @@ func main() {
 
 	client := mgr.GetClient()
 	kmmHandler := kmmmodule.NewKMMModule(client, scheme)
-	nlHandler := nodelabeller.NewNodeLabeller(scheme)
 	nmHandler := nodemetrics.NewNodeMetrcis(scheme)
 	dcr := controllers.NewDeviceConfigReconciler(
 		client,
 		kmmHandler,
-		nlHandler,
 		nmHandler)
 	if err = dcr.SetupWithManager(mgr); err != nil {
 		cmd.FatalError(setupLogger, err, "unable to create controller", "name", controllers.DeviceConfigReconcilerName)
