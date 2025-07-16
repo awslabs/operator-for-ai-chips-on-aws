@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ""
+  namespace: ""
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: scheduler
+      app.kubernetes.io/instance: neuron-scheduler-extension
+      app.kubernetes.io/name: neuron-scheduler-extension
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: scheduler
+        app.kubernetes.io/instance: neuron-scheduler-extension
+        app.kubernetes.io/name: neuron-scheduler-extension
+    spec:
+      serviceAccountName: awslabs-gpu-operator-neuron-scheduler
+      priorityClassName: system-node-critical
+      schedulerName: neuron-scheduler
+      containers:
+      - name: neuron-scheduler-extension
+        image: test-extension-image:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PORT
+          value: "12345" 
