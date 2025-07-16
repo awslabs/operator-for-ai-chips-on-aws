@@ -38,6 +38,14 @@ type DeviceConfigSpec struct {
 	// +kubebuilder:validation:Required
 	DevicePluginImage string `json:"devicePluginImage,omitempty"`
 
+	// custom scheduler image
+	// +kubebuilder:validation:Required
+	CustomSchedulerImage string `json:"customSchedulerImage,omitempty"`
+
+	// scheduler extension image
+	// +kubebuilder:validation:Required
+	SchedulerExtensionImage string `json:"schedulerExtensionImage,omitempty"`
+
 	// pull secrets used for pull/setting images used by operator
 	// +optional
 	ImageRepoSecret *v1.LocalObjectReference `json:"imageRepoSecret,omitempty"`

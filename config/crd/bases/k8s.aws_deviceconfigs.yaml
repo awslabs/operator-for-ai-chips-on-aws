@@ -42,6 +42,9 @@ spec:
             description: DeviceConfigSpec describes how the AMD GPU operator should
               enable AMD GPU device for customer's use.
             properties:
+              customSchedulerImage:
+                description: custom scheduler image
+                type: string
               devicePluginImage:
                 description: device plugin image
                 type: string
@@ -62,6 +65,9 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              schedulerExtensionImage:
+                description: scheduler extension image
+                type: string
               selector:
                 additionalProperties:
                   type: string
@@ -72,8 +78,10 @@ spec:
                 description: if the in-tree driver should be used instead of OOT drivers
                 type: boolean
             required:
+            - customSchedulerImage
             - devicePluginImage
             - driversImage
+            - schedulerExtensionImage
             type: object
           status:
             description: ModuleStatus defines the observed state of Module.
