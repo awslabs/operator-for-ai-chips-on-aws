@@ -22,6 +22,7 @@ import (
 
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
 	mock_client "github.com/awslabs/operator-for-ai-chips-on-aws/internal/client"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	. "github.com/onsi/ginkgo/v2"
@@ -61,6 +62,7 @@ var _ = Describe("Reconcile", func() {
 
 	DescribeTable("reconciler error flow", func(setFinalizerError,
 		handleKMMModuleError,
+		handleCustomSchedulerError,
 		handleMetricsError bool) {
 		devConfig := &awslabsv1alpha1.DeviceConfig{}
 		if setFinalizerError {
@@ -73,6 +75,11 @@ var _ = Describe("Reconcile", func() {
 			goto executeTestFunction
 		}
 		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
+		if handleCustomSchedulerError {
+			mockHelper.EXPECT().handleCustomScheduler(ctx, devConfig).Return(fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		mockHelper.EXPECT().handleCustomScheduler(ctx, devConfig).Return(nil)
 		if handleMetricsError {
 			mockHelper.EXPECT().handleNodeMetrics(ctx, devConfig).Return(fmt.Errorf("some error"))
 			goto executeTestFunction
@@ -82,17 +89,18 @@ var _ = Describe("Reconcile", func() {
 	executeTestFunction:
 
 		res, err := dcr.Reconcile(ctx, devConfig)
-		if setFinalizerError || handleKMMModuleError || handleMetricsError {
+		if setFinalizerError || handleKMMModuleError || handleCustomSchedulerError || handleMetricsError {
 			Expect(err).To(HaveOccurred())
 		} else {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).To(Equal(ctrl.Result{}))
 		}
 	},
-		Entry("good flow, no requeue", false, false, false),
-		Entry("setFinalizer failed", true, false, false),
-		Entry("handleKMMModule failed", false, true, false),
-		Entry("handleMetrics failed", false, false, true),
+		Entry("good flow, no requeue", false, false, false, false),
+		Entry("setFinalizer failed", true, false, false, false),
+		Entry("handleKMMModule failed", false, true, false, false),
+		Entry("handleCustomScheduler failed", false, false, true, false),
+		Entry("handleMetrics failed", false, false, false, true),
 	)
 
 	It("device config finalization", func() {
@@ -123,7 +131,7 @@ var _ = Describe("setFinalizer", func() {
 	BeforeEach(func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -159,7 +167,7 @@ var _ = Describe("finalizeDeviceConfig", func() {
 	BeforeEach(func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -261,7 +269,7 @@ var _ = Describe("handleKMMModule", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		kmmHelper = kmmmodule.NewMockKMMModuleAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -311,6 +319,81 @@ var _ = Describe("handleKMMModule", func() {
 	})
 })
 
+var _ = Describe("handleCustomScheduler", func() {
+	var (
+		kubeClient    *mock_client.MockClient
+		dcrh          deviceConfigReconcilerHelperAPI
+		mockCDHandler *customscheduler.MockCustomScheduler
+	)
+
+	BeforeEach(func() {
+		ctrl := gomock.NewController(GinkgoT())
+		kubeClient = mock_client.NewMockClient(ctrl)
+		mockCDHandler = customscheduler.NewMockCustomScheduler(ctrl)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, mockCDHandler, nil, scheme)
+	})
+
+	ctx := context.Background()
+	devConfig := &awslabsv1alpha1.DeviceConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      devConfigName,
+			Namespace: devConfigNamespace,
+		},
+	}
+
+	It("good flow", func() {
+		gomock.InOrder(
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ interface{}, _ interface{}, dp *appsv1.Deployment, _ ...client.GetOption) error {
+					return nil
+				},
+			),
+			mockCDHandler.EXPECT().SetCustomSchedulerAsDesired(gomock.Any(), devConfig),
+			kubeClient.EXPECT().Patch(ctx, gomock.Any(), gomock.Any()).Return(nil),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ interface{}, _ interface{}, dp *appsv1.Deployment, _ ...client.GetOption) error {
+					return nil
+				},
+			),
+			mockCDHandler.EXPECT().SetCustomSchedulerExtensionAsDesired(gomock.Any(), devConfig),
+			kubeClient.EXPECT().Patch(ctx, gomock.Any(), gomock.Any()).Return(nil),
+		)
+		err := dcrh.handleCustomScheduler(ctx, devConfig)
+
+		Expect(err).To(BeNil())
+	})
+
+	It("custom scheduler deployment failed", func() {
+		kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ interface{}, _ interface{}, dp *appsv1.Deployment, _ ...client.GetOption) error {
+				return fmt.Errorf("some error")
+			},
+		)
+		err := dcrh.handleCustomScheduler(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("custom scheduler extension deployment failed", func() {
+		gomock.InOrder(
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ interface{}, _ interface{}, dp *appsv1.Deployment, _ ...client.GetOption) error {
+					return nil
+				},
+			),
+			mockCDHandler.EXPECT().SetCustomSchedulerAsDesired(gomock.Any(), devConfig),
+			kubeClient.EXPECT().Patch(ctx, gomock.Any(), gomock.Any()).Return(nil),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ interface{}, _ interface{}, dp *appsv1.Deployment, _ ...client.GetOption) error {
+					return fmt.Errorf("some error")
+				},
+			),
+		)
+		err := dcrh.handleCustomScheduler(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
+	})
+
+})
+
 var _ = Describe("handleNodeMetrics", func() {
 	var (
 		kubeClient        *mock_client.MockClient
@@ -322,7 +405,7 @@ var _ = Describe("handleNodeMetrics", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		nodeMetricsHelper = nodemetrics.NewMockNodeMetrics(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nodeMetricsHelper)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nodeMetricsHelper, nil)
 	})
 
 	ctx := context.Background()
