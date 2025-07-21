@@ -12,6 +12,11 @@ configMapGenerator:
 - files:
   - controller_manager_config.yaml
   name: manager-config
+- files:
+  - neuron_scheduler_config.yaml
+  name: neuron-scheduler-config
+  options:
+    disableNameSuffixHash: true
 
 patches:
 - path: manager_config_patch.yaml
