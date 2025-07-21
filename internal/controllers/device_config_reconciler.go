@@ -21,12 +21,14 @@ import (
 	"fmt"
 
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,8 +50,10 @@ type DeviceConfigReconciler struct {
 func NewDeviceConfigReconciler(
 	client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
-	nmHandler nodemetrics.NodeMetrics) *DeviceConfigReconciler {
-	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, nmHandler)
+	csHandler customscheduler.CustomScheduler,
+	nmHandler nodemetrics.NodeMetrics,
+	scheme *runtime.Scheme) *DeviceConfigReconciler {
+	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, csHandler, nmHandler, scheme)
 	return &DeviceConfigReconciler{
 		helper: helper,
 	}
@@ -61,6 +65,7 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&awslabsv1alpha1.DeviceConfig{}).
 		Owns(&kmmv1beta1.Module{}).
 		Owns(&appsv1.DaemonSet{}).
+		Owns(&appsv1.Deployment{}).
 		Named(DeviceConfigReconcilerName).
 		Complete(
 			reconcile.AsReconciler[*awslabsv1alpha1.DeviceConfig](mgr.GetClient(), r),
@@ -73,6 +78,7 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:rbac:groups=kmm.sigs.x-k8s.io,resources=modules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=create;delete;get;list;patch;watch;create
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=create;delete;get;list;patch;watch
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=create;delete;get;list;patch;watch
 
 func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) (ctrl.Result, error) {
 	res := ctrl.Result{}
@@ -98,6 +104,12 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 		return res, fmt.Errorf("failed to handle KMM module for DeviceConfig: %v", err)
 	}
 
+	logger.Info("start custom scheduler reconciliation")
+	err = r.helper.handleCustomScheduler(ctx, devConfig)
+	if err != nil {
+		return res, fmt.Errorf("failed to handle customScheduler for DeviceConfig: %v", err)
+	}
+
 	logger.Info("start metrics reconciliation")
 	err = r.helper.handleNodeMetrics(ctx, devConfig)
 	if err != nil {
@@ -112,22 +124,29 @@ type deviceConfigReconcilerHelperAPI interface {
 	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
+	handleCustomScheduler(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 }
 
 type deviceConfigReconcilerHelper struct {
 	client     client.Client
 	kmmHandler kmmmodule.KMMModuleAPI
+	csHandler  customscheduler.CustomScheduler
 	nmHandler  nodemetrics.NodeMetrics
+	scheme     *runtime.Scheme
 }
 
 func newDeviceConfigReconcilerHelper(client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
-	nmHandler nodemetrics.NodeMetrics) deviceConfigReconcilerHelperAPI {
+	csHandler customscheduler.CustomScheduler,
+	nmHandler nodemetrics.NodeMetrics,
+	scheme *runtime.Scheme) deviceConfigReconcilerHelperAPI {
 	return &deviceConfigReconcilerHelper{
 		client:     client,
 		kmmHandler: kmmHandler,
+		csHandler:  csHandler,
 		nmHandler:  nmHandler,
+		scheme:     scheme,
 	}
 }
 
@@ -197,6 +216,36 @@ func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, d
 
 	return err
 
+}
+
+func (dcrh *deviceConfigReconcilerHelper) handleCustomScheduler(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+	csDep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-custom-scheduler"},
+	}
+	logger := log.FromContext(ctx)
+	opRes, err := controllerutil.CreateOrPatch(ctx, dcrh.client, csDep, func() error {
+		dcrh.csHandler.SetCustomSchedulerAsDesired(csDep, devConfig)
+		return controllerutil.SetControllerReference(devConfig, csDep, dcrh.scheme)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create/patch custom scheduler deployment: %v", err)
+	}
+
+	logger.Info("Reconciled custom scheduler", "namespace", csDep.Namespace, "name", csDep.Name, "result", opRes)
+
+	cseDep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-custom-scheduler-extension"},
+	}
+	opRes, err = controllerutil.CreateOrPatch(ctx, dcrh.client, cseDep, func() error {
+		dcrh.csHandler.SetCustomSchedulerExtensionAsDesired(cseDep, devConfig)
+		return controllerutil.SetControllerReference(devConfig, cseDep, dcrh.scheme)
+	})
+
+	if err == nil {
+		logger.Info("Reconciled custom scheduler extension", "namespace", cseDep.Namespace, "name", cseDep.Name, "result", opRes)
+	}
+
+	return err
 }
 
 func (dcrh *deviceConfigReconcilerHelper) handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
