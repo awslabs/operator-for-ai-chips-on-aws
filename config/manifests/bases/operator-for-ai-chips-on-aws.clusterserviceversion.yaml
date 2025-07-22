@@ -1,0 +1,47 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: operator-for-ai-chips-on-aws.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: DeviceConfig describes how to enable awslabs GPU device
+      displayName: DeviceConfig
+      kind: DeviceConfig
+      name: deviceconfigs.k8s.aws
+      version: v1alpha1
+  description: Operator responsible for deploying NEURON GPU kernel module, device
+    plugin and custom scheduler/extension
+  displayName: operator-for-ai-chips-on-aws
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - Neuron
+  - aws
+  - operator
+  links:
+  - name: Operator For Ai Chips On Aws
+    url: https://operator-for-ai-chips-on-aws.domain
+  maturity: alpha
+  provider:
+    name: operator-for-ai-chips-on-aws
+  version: 0.0.0
