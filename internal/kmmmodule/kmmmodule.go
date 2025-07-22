@@ -74,6 +74,7 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 					InTreeModulesToRemove: []string{gpuDriverModuleName},
 				},
 			},
+			ImagePullPolicy: v1.PullAlways,
 		},
 	}
 	mod.Spec.ModuleLoader.ServiceAccountName = "awslabs-gpu-operator-kmm-module-loader"

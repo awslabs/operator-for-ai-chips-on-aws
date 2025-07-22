@@ -1,0 +1,20 @@
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+  - schedulerName: neuron-scheduler
+extenders:
+  - urlPrefix: 'http://k8s-neuron-scheduler.kube-system.svc.cluster.local:12345'
+    filterVerb: filter
+    bindVerb: bind
+    enableHTTPS: false
+    nodeCacheCapable: false
+    managedResources:
+      - name: 'aws.amazon.com/neuron'
+        ignoredByScheduler: false
+      - name: 'aws.amazon.com/neuroncore'
+        ignoredByScheduler: false
+    ignorable: false
+leaderElection:
+  leaderElect: true
+  resourceNamespace: ai-operator-on-aws 
+  resourceName: neuron-scheduler

@@ -14,6 +14,7 @@ spec:
           containerImage: driversImage
           inTreeModulesToRemove:
           - neuron
+      imagePullPolicy: Always
     serviceAccountName: "awslabs-gpu-operator-kmm-module-loader"
   selector:
     feature.node.kubernetes.io/pci-1d0f.present: "true"

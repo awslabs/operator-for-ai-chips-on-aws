@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: neuron-scheduler-extension
+spec:
+  ports:
+  - port: 12345
+    name: http
+    targetPort: 12345
+  selector:
+    app.kubernetes.io/name: neuron-scheduler-extension
+    app.kubernetes.io/instance: neuron-scheduler-extension
+    app.kubernetes.io/component: scheduler
