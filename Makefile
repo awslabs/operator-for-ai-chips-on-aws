@@ -211,8 +211,8 @@ bundle: operator-sdk manifests kustomize
 	${OPERATOR_SDK} generate kustomize manifests --apis-dir api
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	OPERATOR_SDK="${OPERATOR_SDK}" \
-		     BUNDLE_GEN_FLAGS="${BUNDLE_GEN_FLAGS} --extra-service-accounts amd-gpu-operator-kmm-device-plugin,amd-gpu-operator-kmm-module-loader" \
-		     PKG=amd-gpu-operator \
+		     BUNDLE_GEN_FLAGS="${BUNDLE_GEN_FLAGS} --extra-service-accounts awslabs-gpu-operator-kmm-device-plugin,awslabs-gpu-operator-kmm-module-loader,awslabs-gpu-operator-neuron-scheduler,awslabs-gpu-operator-neuron-scheduler-extension" \
+		     PKG=aws-neuron-operator \
 		     SOURCE_DIR=$(dir $(realpath $(lastword $(MAKEFILE_LIST)))) \
 		     ./hack/generate-bundle
 
