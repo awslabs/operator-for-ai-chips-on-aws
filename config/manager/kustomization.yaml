@@ -3,8 +3,8 @@ kind: Kustomization
 
 images:
 - name: controller
-  newName: ghcr.io/awslabs/operator-for-ai-chips-on-aws/operator
-  newTag: latest
+  newName: quay.io/edge-infrastructure/aws-neuron-operator
+  newTag: v0.0.1
 
 resources:
 - manager.yaml

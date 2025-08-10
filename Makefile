@@ -12,10 +12,10 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # quay.io/yshnaidm/amd-gpu-operator-bundle:$PROJECT_VERSION and quay.io/yshnaidm/amd-gpu-operator-catalog:$PROJECT_VERSION.
-IMAGE_TAG_BASE ?= ghcr.io/awslabs/operator-for-ai-chips-on-aws/operator
+IMAGE_TAG_BASE ?= quay.io/edge-infrastructure/aws-neuron-operator
 
 # This is the default tag of all images made by this Makefile.
-IMAGE_TAG ?= latest
+IMAGE_TAG ?= v$(PROJECT_VERSION)
 
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):$(IMAGE_TAG)
@@ -57,6 +57,14 @@ ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
+endif
+
+OS := $(shell GOTOOLCHAIN=local go env GOOS)
+ARCH := $(shell GOTOOLCHAIN=local go env GOARCH)
+
+ifeq ($(OS),darwin)
+export GOPROXY=direct
+export GOSUMDB=sum.golang.org
 endif
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
@@ -111,7 +119,7 @@ TEST ?= ./...
 unit-test: vet ## Run tests.
 	go test $(TEST) -coverprofile cover.out
 
-GOFILES_NO_VENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*")
+GOFILES_NO_VENDOR = $(shell find . -type f -name '*.go' ! -path "./vendor/*")
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint against code.
 	@if [ `gofmt -l $(GOFILES_NO_VENDOR) | wc -l` -ne 0 ]; then \
@@ -123,16 +131,12 @@ lint: golangci-lint ## Run golangci-lint against code.
 
 ##@ Build
 
-manager: $(shell find -name "*.go") go.mod go.sum  ## Build manager binary.
-	go build -ldflags="-X main.Version=$(PROJECT_VERSION) -X main.GitCommit=$(GIT_COMMIT)" -o $@ ./cmd
+manager: $(shell find . -name "*.go") go.mod go.sum  ## Build manager binary.
+	GOARCH=amd64 GOOS=linux go build -ldflags="-X main.Version=$(PROJECT_VERSION) -X main.GitCommit=$(GIT_COMMIT)" -o $@ ./cmd
 
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	docker build -t $(IMG) --build-arg TARGET=manager .
-
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	docker push $(IMG)
+	docker buildx build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --push .
 
 ##@ Deployment
 
@@ -200,8 +204,8 @@ operator-sdk:
 	@if [ ! -f ${OPERATOR_SDK} ]; then \
 		set -e ;\
 		echo "Downloading ${OPERATOR_SDK}"; \
-		mkdir -p $(dir ${OPERATOR_SDK}) ;\
-		curl -Lo ${OPERATOR_SDK} 'https://github.com/operator-framework/operator-sdk/releases/download/v1.32.0/operator-sdk_linux_amd64'; \
+		mkdir -p $(dir ${OPERATOR_SDK}) ; \
+		curl -Lo ${OPERATOR_SDK} 'https://github.com/operator-framework/operator-sdk/releases/download/v1.32.0/operator-sdk_${OS}_${ARCH}'; \
 		chmod +x ${OPERATOR_SDK}; \
 	fi
 
@@ -220,22 +224,26 @@ bundle: operator-sdk manifests kustomize
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
-
+	docker buildx build --platform linux/amd64,linux/arm64 -f bundle.Dockerfile -t $(BUNDLE_IMG) --push .
 
 .PHONY: opm
 OPM = ./bin/opm
-opm:
-	@if [ ! -f ${OPM} ]; then \
-                set -e ;\
-                echo "Downloading ${OPM}"; \
-                mkdir -p $(dir ${OPM}) ;\
-                curl -Lo ${OPM}.tar 'https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/latest-4.8/opm-linux.tar.gz'; \
-		tar -C $(dir ${OPM}) -xzf ${OPM}.tar; \
-                chmod +x ${OPM}; \
-		rm -f ${OPM}.tar; \
-        fi
+opm: ## Download opm locally if necessary.
+ifeq (,$(wildcard $(OPM)))
+ifeq (,$(shell which opm 2>/dev/null))
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(OPM)) ;\
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.31.0/${OS}-${ARCH}-opm ;\
+	chmod +x $(OPM) ;\
+	}
+else
+OPM = $(shell which opm)
+endif
+endif
 
 .PHONY: index
 index: opm
-	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG}
+	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG} --generate -d Dockerfile.index --container-tool docker
+	docker buildx build --platform linux/amd64 -t $(INDEX_IMG) -f Dockerfile.index --push .
+	rm -rf Dockerfile.index database
