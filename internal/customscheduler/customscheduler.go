@@ -64,8 +64,9 @@ func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, de
 	}
 
 	matchLabels := map[string]string{
-		"app.kubernetes.io/name":      "neuron-scheduler",
-		"app.kubernetes.io/component": "neuron-scheduler",
+		"app.kubernetes.io/name":      "aws-neuron",
+		"app.kubernetes.io/component": "aws-neuron",
+		"app.kubernetes.io/part-of":   "aws-neuron",
 		"app.kubernetes.io/instance":  "neuron-release",
 		"tier":                        "control-plane",
 	}
@@ -126,9 +127,10 @@ func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, de
 
 func (cs *customScheduler) SetCustomSchedulerExtensionAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1alpha1.DeviceConfig) {
 	matchLabels := map[string]string{
-		"app.kubernetes.io/name":      "neuron-scheduler-extension",
+		"app.kubernetes.io/name":      "aws-neuron",
 		"app.kubernetes.io/instance":  "neuron-scheduler-extension",
-		"app.kubernetes.io/component": "scheduler",
+		"app.kubernetes.io/component": "aws-neuron",
+		"app.kubernetes.io/part-of":   "aws-neuron",
 	}
 	dp.Spec = appsv1.DeploymentSpec{
 		Replicas: ptr.To[int32](1),

@@ -7,17 +7,19 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/component: neuron-scheduler
-      app.kubernetes.io/instance: neuron-release
-      app.kubernetes.io/name: neuron-scheduler
-      tier: control-plane
+      app.kubernetes.io/name:      aws-neuron
+      app.kubernetes.io/component: aws-neuron
+      app.kubernetes.io/part-of:   aws-neuron
+      app.kubernetes.io/instance:  neuron-release
+      tier:                        control-plane
   template:
     metadata:
       labels:
-        app.kubernetes.io/component: neuron-scheduler
-        app.kubernetes.io/instance: neuron-release
-        app.kubernetes.io/name: neuron-scheduler
-        tier: control-plane
+        app.kubernetes.io/name:      aws-neuron
+        app.kubernetes.io/component: aws-neuron
+        app.kubernetes.io/part-of:   aws-neuron
+        app.kubernetes.io/instance:  neuron-release
+        tier:                        control-plane
     spec:
       serviceAccountName: awslabs-gpu-operator-neuron-scheduler
       containers:
