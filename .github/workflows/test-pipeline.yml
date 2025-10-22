@@ -15,6 +15,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      pull-requests: read
     
     steps:
     - uses: actions/checkout@v4
@@ -75,56 +76,86 @@ jobs:
       run: |
         echo "Validating PR #${{ inputs.pr_number }}"
         
-        # Check if PR exists
-        if ! gh pr view ${{ inputs.pr_number }} > /dev/null 2>&1; then
-          echo "Error: PR #${{ inputs.pr_number }} does not exist"
+        # First try to get PR info using GitHub API directly (works better with forks)
+        PR_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ inputs.pr_number }}")
+        
+        # Check if PR exists by looking for the number field
+        if ! echo "$PR_INFO" | jq -e '.number' > /dev/null 2>&1; then
+          echo "Error: PR #${{ inputs.pr_number }} does not exist or is not accessible"
+          echo "API Response: $PR_INFO"
           exit 1
         fi
         
         # Get PR state and mergeable status
-        PR_STATE=$(gh pr view ${{ inputs.pr_number }} --json state --jq '.state')
-        PR_MERGEABLE=$(gh pr view ${{ inputs.pr_number }} --json mergeable --jq '.mergeable')
+        PR_STATE=$(echo "$PR_INFO" | jq -r '.state')
+        PR_MERGEABLE=$(echo "$PR_INFO" | jq -r '.mergeable // "unknown"')
+        PR_HEAD_REF=$(echo "$PR_INFO" | jq -r '.head.ref')
+        PR_HEAD_SHA=$(echo "$PR_INFO" | jq -r '.head.sha')
+        PR_BASE_REF=$(echo "$PR_INFO" | jq -r '.base.ref')
+        PR_FORK=$(echo "$PR_INFO" | jq -r '.head.repo.fork')
         
         echo "PR State: $PR_STATE"
         echo "PR Mergeable: $PR_MERGEABLE"
+        echo "PR Head Ref: $PR_HEAD_REF"
+        echo "PR Head SHA: $PR_HEAD_SHA"
+        echo "PR Base Ref: $PR_BASE_REF"
+        echo "Is Fork: $PR_FORK"
         
-        if [ "$PR_STATE" != "OPEN" ]; then
+        if [ "$PR_STATE" != "open" ]; then
           echo "Error: PR #${{ inputs.pr_number }} is not open (state: $PR_STATE)"
           exit 1
         fi
         
-        if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
+        if [ "$PR_MERGEABLE" = "false" ]; then
           echo "Error: PR #${{ inputs.pr_number }} has merge conflicts"
           exit 1
         fi
         
+        # Store PR info for later steps
+        echo "PR_HEAD_REF=$PR_HEAD_REF" >> $GITHUB_ENV
+        echo "PR_HEAD_SHA=$PR_HEAD_SHA" >> $GITHUB_ENV
+        echo "PR_BASE_REF=$PR_BASE_REF" >> $GITHUB_ENV
+        echo "PR_FORK=$PR_FORK" >> $GITHUB_ENV
+        
         echo "PR validation successful"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Fetch and merge PR
       run: |
         echo "Fetching PR #${{ inputs.pr_number }}"
         
-        # Fetch PR branch
-        gh pr checkout ${{ inputs.pr_number }}
-        PR_BRANCH=$(git branch --show-current)
-        echo "Checked out PR branch: $PR_BRANCH"
+        # Configure git
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
         
-        # Switch to main and merge
-        git checkout main
-        git pull origin main
+        # Fetch the PR branch - handle both fork and non-fork PRs
+        if [ "${{ env.PR_FORK }}" = "true" ]; then
+          echo "PR is from a fork, fetching from API"
+          # For fork PRs, we need to fetch the specific commit
+          git fetch origin pull/${{ inputs.pr_number }}/head:pr-${{ inputs.pr_number }}
+          PR_BRANCH="pr-${{ inputs.pr_number }}"
+        else
+          echo "PR is from same repo, using gh pr checkout"
+          gh pr checkout ${{ inputs.pr_number }}
+          PR_BRANCH=$(git branch --show-current)
+        fi
         
-        echo "Attempting to merge PR branch into main..."
+        echo "Using PR branch: $PR_BRANCH"
+        
+        # Switch to base branch and merge
+        git checkout ${{ env.PR_BASE_REF }}
+        git pull origin ${{ env.PR_BASE_REF }}
+        
+        echo "Attempting to merge PR branch into ${{ env.PR_BASE_REF }}..."
         if ! git merge --no-ff "$PR_BRANCH" -m "Test merge of PR #${{ inputs.pr_number }}"; then
-          echo "Error: Failed to merge PR #${{ inputs.pr_number }} into main"
+          echo "Error: Failed to merge PR #${{ inputs.pr_number }} into ${{ env.PR_BASE_REF }}"
           echo "This may be due to merge conflicts or other issues"
           git merge --abort 2>/dev/null || true
           exit 1
         fi
         
-        # Generate PR-based version tag
-        SHORT_SHA=$(git rev-parse --short HEAD)
+        # Generate PR-based version tag using the original PR head SHA
+        SHORT_SHA=$(echo "${{ env.PR_HEAD_SHA }}" | cut -c1-7)
         PR_VERSION="pr-${{ inputs.pr_number }}-${SHORT_SHA}"
         echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
         echo "Generated test version: $PR_VERSION"

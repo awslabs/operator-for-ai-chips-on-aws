@@ -21,13 +21,14 @@ The Test Pipeline allows developers to build and test container images from Pull
 ## What the Pipeline Does
 
 ### 1. PR Validation
-- Verifies the PR exists and is in OPEN state
+- Verifies the PR exists and is in OPEN state (works with fork PRs)
 - Checks that the PR is mergeable (no conflicts)
-- Validates PR can be merged with main branch
+- Validates PR can be merged with base branch
+- Handles both same-repo and fork PRs automatically
 
 ### 2. Code Preparation
-- Fetches the PR branch
-- Merges PR branch with latest main branch
+- Fetches the PR branch (handles both fork and same-repo PRs)
+- Merges PR branch with latest base branch (usually main)
 - Generates unique version tag: `pr-{PR_NUMBER}-{SHORT_SHA}`
 
 ### 3. Image Building
@@ -129,8 +130,12 @@ kubectl delete -f aws-neuron-operator.yaml
 
 #### 1. PR Validation Failures
 
-**Error**: "PR does not exist" or "PR is not open"
+**Error**: "PR does not exist or is not accessible"
 - **Solution**: Verify the PR number is correct and the PR is still open
+- **Note**: Works with both fork and same-repo PRs
+
+**Error**: "PR is not open"
+- **Solution**: Ensure the PR is still open and not closed/merged
 
 **Error**: "PR has merge conflicts"
 - **Solution**: Resolve merge conflicts in your PR branch first
@@ -163,8 +168,9 @@ kubectl delete -f aws-neuron-operator.yaml
 
 1. **Check Workflow Logs**: Review detailed logs in the GitHub Actions workflow run
 2. **Validate PR**: Ensure your PR is mergeable and builds successfully locally
-3. **AWS Permissions**: Verify ECR access and image push permissions
-4. **Local Testing**: Test manifest generation locally using `make test-manifests`
+3. **Fork PR Issues**: The pipeline automatically handles fork PRs - check the logs for "Is Fork: true/false"
+4. **AWS Permissions**: Verify ECR access and image push permissions
+5. **Local Testing**: Test manifest generation locally using `make test-manifests`
 
 ## Advanced Usage
 
