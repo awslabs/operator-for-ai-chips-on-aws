@@ -30,6 +30,7 @@ The Test Pipeline allows developers to build and test container images from Pull
 - Fetches the PR branch (handles both fork and same-repo PRs)
 - Merges PR branch with latest base branch (usually main)
 - Generates unique version tag: `pr-{PR_NUMBER}-{SHORT_SHA}`
+- Creates semantic version for OLM bundle: `0.0.0-pr{PR_NUMBER}.{SHORT_SHA}`
 
 ### 3. Image Building
 - Builds operator image and pushes to private ECR
