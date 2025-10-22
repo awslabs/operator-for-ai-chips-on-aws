@@ -157,8 +157,14 @@ jobs:
         # Generate PR-based version tag using the original PR head SHA
         SHORT_SHA=$(echo "${{ env.PR_HEAD_SHA }}" | cut -c1-7)
         PR_VERSION="pr-${{ inputs.pr_number }}-${SHORT_SHA}"
+        
+        # Generate semantic version for operator-sdk (which requires X.Y.Z format)
+        SEMANTIC_VERSION="0.0.0-pr${{ inputs.pr_number }}.${SHORT_SHA}"
+        
         echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+        echo "SEMANTIC_VERSION=$SEMANTIC_VERSION" >> $GITHUB_ENV
         echo "Generated test version: $PR_VERSION"
+        echo "Generated semantic version: $SEMANTIC_VERSION"
         
         echo "Successfully merged PR #${{ inputs.pr_number }}"
       env:
@@ -175,12 +181,12 @@ jobs:
         # Build and push operator image
         make test-docker-build PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
         
-        # Build and push bundle
-        make test-bundle PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
-        make test-bundle-build PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        # Build and push bundle (use semantic version for operator-sdk)
+        make test-bundle PROJECT_VERSION=${{ env.SEMANTIC_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        make test-bundle-build PROJECT_VERSION=${{ env.SEMANTIC_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
         
         # Build and push index
-        make test-index PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        make test-index PROJECT_VERSION=${{ env.SEMANTIC_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
         
         echo "Successfully built and pushed all test images"
 
@@ -188,7 +194,7 @@ jobs:
       run: |
         echo "Generating test manifests for version: ${{ env.PR_VERSION }}"
         
-        # Generate test manifests with private registry references
+        # Generate test manifests with private registry references (use PR_VERSION for directory structure)
         make test-manifests PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
         
         echo "Successfully generated test manifests"
