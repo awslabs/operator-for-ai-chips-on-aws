@@ -1,0 +1,244 @@
+name: Test Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull Request number to test'
+        required: true
+        type: string
+
+jobs:
+  test-pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install semver
+      run: npm install -g semver
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR Private
+      uses: aws-actions/amazon-ecr-login@v2
+      with:
+        registry-type: private
+
+    - name: Verify ECR authentication
+      run: |
+        echo "Verifying ECR private registry authentication..."
+        
+        # Test authentication by attempting to describe repositories
+        if aws ecr describe-repositories --region us-east-1 --registry-id 582767206473 > /dev/null 2>&1; then
+          echo "✓ ECR private registry authentication successful"
+        else
+          echo "✗ ECR private registry authentication failed"
+          exit 1
+        fi
+        
+        # Verify Docker can authenticate to ECR
+        if docker login --username AWS --password-stdin 582767206473.dkr.ecr.us-east-1.amazonaws.com < <(aws ecr get-login-password --region us-east-1); then
+          echo "✓ Docker ECR authentication successful"
+        else
+          echo "✗ Docker ECR authentication failed"
+          exit 1
+        fi
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Install OpenShift CLI
+      run: |
+        curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+        tar -xzf openshift-client-linux.tar.gz
+        sudo mv oc /usr/local/bin/
+        oc version --client
+
+    - name: Validate PR exists and is mergeable
+      run: |
+        echo "Validating PR #${{ inputs.pr_number }}"
+        
+        # Check if PR exists
+        if ! gh pr view ${{ inputs.pr_number }} > /dev/null 2>&1; then
+          echo "Error: PR #${{ inputs.pr_number }} does not exist"
+          exit 1
+        fi
+        
+        # Get PR state and mergeable status
+        PR_STATE=$(gh pr view ${{ inputs.pr_number }} --json state --jq '.state')
+        PR_MERGEABLE=$(gh pr view ${{ inputs.pr_number }} --json mergeable --jq '.mergeable')
+        
+        echo "PR State: $PR_STATE"
+        echo "PR Mergeable: $PR_MERGEABLE"
+        
+        if [ "$PR_STATE" != "OPEN" ]; then
+          echo "Error: PR #${{ inputs.pr_number }} is not open (state: $PR_STATE)"
+          exit 1
+        fi
+        
+        if [ "$PR_MERGEABLE" = "CONFLICTING" ]; then
+          echo "Error: PR #${{ inputs.pr_number }} has merge conflicts"
+          exit 1
+        fi
+        
+        echo "PR validation successful"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Fetch and merge PR
+      run: |
+        echo "Fetching PR #${{ inputs.pr_number }}"
+        
+        # Fetch PR branch
+        gh pr checkout ${{ inputs.pr_number }}
+        PR_BRANCH=$(git branch --show-current)
+        echo "Checked out PR branch: $PR_BRANCH"
+        
+        # Switch to main and merge
+        git checkout main
+        git pull origin main
+        
+        echo "Attempting to merge PR branch into main..."
+        if ! git merge --no-ff "$PR_BRANCH" -m "Test merge of PR #${{ inputs.pr_number }}"; then
+          echo "Error: Failed to merge PR #${{ inputs.pr_number }} into main"
+          echo "This may be due to merge conflicts or other issues"
+          git merge --abort 2>/dev/null || true
+          exit 1
+        fi
+        
+        # Generate PR-based version tag
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        PR_VERSION="pr-${{ inputs.pr_number }}-${SHORT_SHA}"
+        echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+        echo "Generated test version: $PR_VERSION"
+        
+        echo "Successfully merged PR #${{ inputs.pr_number }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push test images
+      run: |
+        # Set test configuration
+        export PROJECT_VERSION="${{ env.PR_VERSION }}"
+        export IMAGE_TAG="${{ env.PR_VERSION }}"
+        
+        echo "Building test images with version: ${{ env.PR_VERSION }}"
+        
+        # Build and push operator image
+        make test-docker-build PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        
+        # Build and push bundle
+        make test-bundle PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        make test-bundle-build PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        
+        # Build and push index
+        make test-index PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        
+        echo "Successfully built and pushed all test images"
+
+    - name: Generate test manifests
+      run: |
+        echo "Generating test manifests for version: ${{ env.PR_VERSION }}"
+        
+        # Generate test manifests with private registry references
+        make test-manifests PROJECT_VERSION=${{ env.PR_VERSION }} IMAGE_TAG=${{ env.PR_VERSION }}
+        
+        echo "Successfully generated test manifests"
+
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-manifests-pr-${{ inputs.pr_number }}-${{ env.PR_VERSION }}
+        path: |
+          release/${{ env.PR_VERSION }}/
+        retention-days: 30
+        if-no-files-found: error
+
+    - name: Create test manifest archive
+      run: |
+        cd release/${{ env.PR_VERSION }}
+        tar -czf ../test-manifests-pr-${{ inputs.pr_number }}.tar.gz *.yaml
+        cd ../..
+        echo "Created test manifest archive: release/test-manifests-pr-${{ inputs.pr_number }}.tar.gz"
+
+    - name: Upload test manifest archive
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-manifests-archive-pr-${{ inputs.pr_number }}
+        path: release/test-manifests-pr-${{ inputs.pr_number }}.tar.gz
+        retention-days: 30
+
+    - name: Final validation
+      run: |
+        echo "Performing final validation of test pipeline results..."
+        
+        # Validate all expected artifacts exist
+        EXPECTED_FILES=(
+          "release/${{ env.PR_VERSION }}/aws-neuron-operator.yaml"
+          "release/${{ env.PR_VERSION }}/nfd-rule.yaml"
+          "release/${{ env.PR_VERSION }}/deviceconfig-sample.yaml"
+          "release/test-manifests-pr-${{ inputs.pr_number }}.tar.gz"
+        )
+        
+        for file in "${EXPECTED_FILES[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            echo "✗ Missing expected file: $file"
+            exit 1
+          else
+            echo "✓ Found: $file"
+          fi
+        done
+        
+        # Validate manifest files are not empty
+        for yaml_file in release/${{ env.PR_VERSION }}/*.yaml; do
+          if [[ ! -s "$yaml_file" ]]; then
+            echo "✗ Empty manifest file: $yaml_file"
+            exit 1
+          fi
+        done
+        
+        echo "✓ All validation checks passed"
+
+
+
+    - name: Create artifact summary
+      run: |
+        echo "## Test Pipeline Results for PR #${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Generated Test Images" >> $GITHUB_STEP_SUMMARY
+        echo "- Operator: \`582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift/operator:${{ env.PR_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Bundle: \`582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift/operator-bundle:${{ env.PR_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Index: \`582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift/operator-index:${{ env.PR_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Test Manifests" >> $GITHUB_STEP_SUMMARY
+        echo "Download the test manifests from the workflow artifacts above to test your changes." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Quick Test Install" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "# Download and apply the test manifests" >> $GITHUB_STEP_SUMMARY
+        echo "kubectl apply -f aws-neuron-operator.yaml" >> $GITHUB_STEP_SUMMARY
+        echo "kubectl apply -f deviceconfig-sample.yaml" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Troubleshooting" >> $GITHUB_STEP_SUMMARY
+        echo "If you encounter issues:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Check the workflow logs for detailed error messages" >> $GITHUB_STEP_SUMMARY
+        echo "2. Verify your PR is mergeable with main branch" >> $GITHUB_STEP_SUMMARY
+        echo "3. Ensure AWS ECR permissions are configured correctly" >> $GITHUB_STEP_SUMMARY

@@ -21,6 +21,8 @@ Dockerfile.cross
 
 # editor and IDE paraphernalia
 .idea
+.vscode
+.kiro
 *.swp
 *.swo
 *~
