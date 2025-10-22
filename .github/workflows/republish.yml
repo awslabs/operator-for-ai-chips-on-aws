@@ -24,29 +24,129 @@ jobs:
       with:
         go-version: '1.21'
 
+    - name: Validate version input
+      run: |
+        echo "Validating version input: ${{ inputs.version }}"
+        
+        # Check if version is provided
+        if [[ -z "${{ inputs.version }}" ]]; then
+          echo "Error: Version input is required"
+          exit 1
+        fi
+        
+        # Validate version format (basic semantic version check)
+        if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Version '${{ inputs.version }}' is not a valid semantic version (X.Y.Z)"
+          exit 1
+        fi
+        
+        # Check if the tag exists
+        if ! git tag -l "v${{ inputs.version }}" | grep -q "v${{ inputs.version }}"; then
+          echo "Error: Tag v${{ inputs.version }} does not exist"
+          exit 1
+        fi
+        
+        echo "✓ Version validation successful"
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: us-east-1
 
+    - name: Verify AWS authentication
+      run: |
+        echo "Verifying AWS authentication..."
+        
+        if ! aws sts get-caller-identity > /dev/null 2>&1; then
+          echo "Error: AWS authentication failed"
+          exit 1
+        fi
+        
+        echo "✓ AWS authentication successful"
+
     - name: Login to Amazon ECR Public
       uses: aws-actions/amazon-ecr-login@v2
       with:
         registry-type: public
+
+    - name: Verify ECR authentication
+      run: |
+        echo "Verifying ECR public registry authentication..."
+        
+        if ! aws ecr-public describe-repositories --region us-east-1 > /dev/null 2>&1; then
+          echo "Error: ECR public registry authentication failed"
+          exit 1
+        fi
+        
+        echo "✓ ECR public registry authentication successful"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Build and push images
       run: |
-        make docker-build PROJECT_VERSION=${{ inputs.version }}
-        make bundle-build PROJECT_VERSION=${{ inputs.version }}
-        make index PROJECT_VERSION=${{ inputs.version }}
+        echo "Rebuilding and pushing images for version: ${{ inputs.version }}"
+        
+        # Build operator image
+        echo "Building operator image..."
+        if ! make docker-build PROJECT_VERSION=${{ inputs.version }}; then
+          echo "Error: Failed to build operator image"
+          exit 1
+        fi
+        echo "✓ Operator image built and pushed successfully"
+        
+        # Build bundle image (skip bundle generation as it should exist)
+        echo "Building bundle image..."
+        if ! make bundle-build PROJECT_VERSION=${{ inputs.version }}; then
+          echo "Error: Failed to build bundle image"
+          exit 1
+        fi
+        echo "✓ Bundle image built and pushed successfully"
+        
+        # Build index image
+        echo "Building index image..."
+        if ! make index PROJECT_VERSION=${{ inputs.version }}; then
+          echo "Error: Failed to build index image"
+          exit 1
+        fi
+        echo "✓ Index image built and pushed successfully"
+        
+        echo "✓ All images rebuilt and pushed successfully"
 
     - name: Generate release manifests
       run: |
-        make release-manifests PROJECT_VERSION=${{ inputs.version }}
+        echo "Regenerating release manifests for version: ${{ inputs.version }}"
+        
+        if ! make release-manifests PROJECT_VERSION=${{ inputs.version }}; then
+          echo "Error: Failed to generate release manifests"
+          exit 1
+        fi
+        
+        # Validate generated manifests
+        EXPECTED_FILES=(
+          "release/${{ inputs.version }}/aws-neuron-operator.yaml"
+          "release/${{ inputs.version }}/nfd-rule.yaml"
+          "release/${{ inputs.version }}/deviceconfig-sample.yaml"
+        )
+        
+        for file in "${EXPECTED_FILES[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            echo "Error: Missing expected manifest file: $file"
+            exit 1
+          fi
+          
+          if [[ ! -s "$file" ]]; then
+            echo "Error: Manifest file is empty: $file"
+            exit 1
+          fi
+          
+          echo "✓ Validated: $file"
+        done
+        
+        echo "✓ Release manifests regenerated and validated successfully"
+
+
 
     - name: Update GitHub Release
       uses: softprops/action-gh-release@v1

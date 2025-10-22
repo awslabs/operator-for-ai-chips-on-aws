@@ -8,17 +8,29 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 # This variable is used to construct full image tags for bundle and catalog images.
 IMAGE_TAG_BASE ?= public.ecr.aws/q5p6u7h8/neuron-openshift/operator
 
+# TEST_IMAGE_TAG_BASE defines the private ECR registry for test images
+TEST_IMAGE_TAG_BASE ?= 582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift
+
 # This is the default tag of all images made by this Makefile.
 IMAGE_TAG ?= v$(PROJECT_VERSION)
 
+# Determine if we're in test mode based on IMAGE_TAG_BASE
+ifeq ($(IMAGE_TAG_BASE),$(TEST_IMAGE_TAG_BASE))
+TEST_MODE := true
+REGISTRY_BASE := $(TEST_IMAGE_TAG_BASE)
+else
+TEST_MODE := false
+REGISTRY_BASE := public.ecr.aws/q5p6u7h8/neuron-openshift
+endif
+
 # Image URL to use all building/pushing image targets
-IMG ?= $(IMAGE_TAG_BASE):$(IMAGE_TAG)
+IMG ?= $(REGISTRY_BASE)/operator:$(IMAGE_TAG)
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(PROJECT_VERSION)
+BUNDLE_IMG ?= $(REGISTRY_BASE)/operator-bundle:$(IMAGE_TAG)
 
-INDEX_IMG := $(IMAGE_TAG_BASE)-index:v$(PROJECT_VERSION)
+INDEX_IMG := $(REGISTRY_BASE)/operator-index:$(IMAGE_TAG)
 
 
 # CHANNELS define the bundle channels used in the bundle.
@@ -241,6 +253,47 @@ index: opm
 	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG} --generate -d Dockerfile.index --container-tool docker
 	docker buildx build --platform linux/amd64 -t $(INDEX_IMG) -f Dockerfile.index --push .
 	rm -rf Dockerfile.index database
+
+##@ Test Pipeline
+
+.PHONY: test-docker-build
+test-docker-build: ## Build docker image for test pipeline with private registry.
+	$(eval IMAGE_TAG_BASE := $(TEST_IMAGE_TAG_BASE))
+	$(eval IMG := $(TEST_IMAGE_TAG_BASE)/operator:$(IMAGE_TAG))
+	docker buildx build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --push .
+
+.PHONY: test-bundle
+test-bundle: operator-sdk manifests kustomize ## Generate test bundle for private registry.
+	$(eval IMAGE_TAG_BASE := $(TEST_IMAGE_TAG_BASE))
+	$(eval IMG := $(TEST_IMAGE_TAG_BASE)/operator:$(IMAGE_TAG))
+	$(eval BUNDLE_IMG := $(TEST_IMAGE_TAG_BASE)/operator-bundle:$(IMAGE_TAG))
+	rm -fr ./bundle
+	${OPERATOR_SDK} generate kustomize manifests --apis-dir api
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	OPERATOR_SDK="${OPERATOR_SDK}" \
+		     BUNDLE_GEN_FLAGS="${BUNDLE_GEN_FLAGS} --extra-service-accounts awslabs-gpu-operator-kmm-device-plugin,awslabs-gpu-operator-kmm-module-loader,awslabs-gpu-operator-neuron-scheduler,awslabs-gpu-operator-neuron-scheduler-extension" \
+		     PKG=aws-neuron-operator \
+		     SOURCE_DIR=$(dir $(realpath $(lastword $(MAKEFILE_LIST)))) \
+		     ./hack/generate-bundle
+	${OPERATOR_SDK} bundle validate ./bundle
+
+.PHONY: test-bundle-build
+test-bundle-build: ## Build test bundle image for private registry.
+	$(eval BUNDLE_IMG := $(TEST_IMAGE_TAG_BASE)/operator-bundle:$(IMAGE_TAG))
+	docker buildx build --platform linux/amd64,linux/arm64 -f bundle.Dockerfile -t $(BUNDLE_IMG) --push .
+
+.PHONY: test-index
+test-index: opm ## Generate test index for private registry.
+	$(eval BUNDLE_IMG := $(TEST_IMAGE_TAG_BASE)/operator-bundle:$(IMAGE_TAG))
+	$(eval INDEX_IMG := $(TEST_IMAGE_TAG_BASE)/operator-index:$(IMAGE_TAG))
+	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG} --generate -d Dockerfile.index --container-tool docker
+	docker buildx build --platform linux/amd64 -t $(INDEX_IMG) -f Dockerfile.index --push .
+	rm -rf Dockerfile.index database
+
+.PHONY: test-manifests
+test-manifests: manifests kustomize ## Generate test manifests for private registry.
+	$(eval IMG := $(TEST_IMAGE_TAG_BASE)/operator:$(IMAGE_TAG))
+	./hack/generate-release-manifests.sh $(PROJECT_VERSION) $(IMG) --test-mode
 
 ##@ Release
 

@@ -34,7 +34,20 @@ jobs:
         go-version: '1.21'
 
     - name: Install semver
-      run: npm install -g semver
+      run: |
+        echo "Installing semver tool..."
+        if ! npm install -g semver; then
+          echo "Error: Failed to install semver tool"
+          exit 1
+        fi
+        
+        # Verify installation
+        if ! command -v semver &> /dev/null; then
+          echo "Error: semver tool not found after installation"
+          exit 1
+        fi
+        
+        echo "✓ semver tool installed successfully"
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -42,57 +55,240 @@ jobs:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         aws-region: us-east-1
 
+    - name: Verify AWS authentication
+      run: |
+        echo "Verifying AWS authentication..."
+        
+        # Test AWS credentials
+        if ! aws sts get-caller-identity > /dev/null 2>&1; then
+          echo "Error: AWS authentication failed"
+          exit 1
+        fi
+        
+        echo "✓ AWS authentication successful"
+
     - name: Login to Amazon ECR Public
       uses: aws-actions/amazon-ecr-login@v2
       with:
         registry-type: public
+
+    - name: Verify ECR authentication
+      run: |
+        echo "Verifying ECR public registry authentication..."
+        
+        # Test ECR authentication by attempting to describe repositories
+        if ! aws ecr-public describe-repositories --region us-east-1 > /dev/null 2>&1; then
+          echo "Error: ECR public registry authentication failed"
+          exit 1
+        fi
+        
+        echo "✓ ECR public registry authentication successful"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Install OpenShift CLI
       run: |
-        curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz
+        echo "Installing OpenShift CLI..."
+        
+        # Download with retry logic
+        for i in {1..3}; do
+          if curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz; then
+            break
+          elif [ $i -eq 3 ]; then
+            echo "Error: Failed to download OpenShift CLI after 3 attempts"
+            exit 1
+          else
+            echo "Download attempt $i failed, retrying..."
+            sleep 5
+          fi
+        done
+        
         tar -xzf openshift-client-linux.tar.gz
         sudo mv oc /usr/local/bin/
-        oc version --client
+        
+        # Verify installation
+        if ! oc version --client; then
+          echo "Error: OpenShift CLI installation failed"
+          exit 1
+        fi
+        
+        echo "✓ OpenShift CLI installed successfully"
 
     - name: Bump version
       run: |
+        echo "Processing version bump..."
+        
+        # Validate VERSION file exists and is readable
+        if [[ ! -f "VERSION" ]]; then
+          echo "Error: VERSION file not found"
+          exit 1
+        fi
+        
         CURRENT_VERSION=$(cat VERSION)
+        if [[ -z "$CURRENT_VERSION" ]]; then
+          echo "Error: VERSION file is empty"
+          exit 1
+        fi
+        
+        echo "Current version: $CURRENT_VERSION"
+        
+        # Validate current version format
+        if ! semver "$CURRENT_VERSION" > /dev/null 2>&1; then
+          echo "Error: Current version '$CURRENT_VERSION' is not a valid semantic version"
+          exit 1
+        fi
+        
         if [ "${{ inputs.bump_type }}" = "none" ]; then
           NEW_VERSION=$CURRENT_VERSION
           echo "Using current version: $NEW_VERSION"
         else
-          NEW_VERSION=$(semver -i ${{ inputs.bump_type }} $CURRENT_VERSION)
+          echo "Bumping version with type: ${{ inputs.bump_type }}"
+          
+          if ! NEW_VERSION=$(semver -i ${{ inputs.bump_type }} $CURRENT_VERSION); then
+            echo "Error: Failed to bump version from $CURRENT_VERSION"
+            exit 1
+          fi
+          
           echo $NEW_VERSION > VERSION
           echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
         fi
+        
+        # Validate new version
+        if [[ -z "$NEW_VERSION" ]]; then
+          echo "Error: New version is empty"
+          exit 1
+        fi
+        
         echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+        echo "✓ Version processing completed: $NEW_VERSION"
 
     - name: Build and push images
       run: |
-        make docker-build PROJECT_VERSION=${{ env.NEW_VERSION }}
-        make bundle PROJECT_VERSION=${{ env.NEW_VERSION }}
-        make bundle-build PROJECT_VERSION=${{ env.NEW_VERSION }}
-        make index PROJECT_VERSION=${{ env.NEW_VERSION }}
+        echo "Building and pushing images for version: ${{ env.NEW_VERSION }}"
+        
+        # Build operator image
+        echo "Building operator image..."
+        if ! make docker-build PROJECT_VERSION=${{ env.NEW_VERSION }}; then
+          echo "Error: Failed to build operator image"
+          exit 1
+        fi
+        echo "✓ Operator image built and pushed successfully"
+        
+        # Generate bundle
+        echo "Generating OLM bundle..."
+        if ! make bundle PROJECT_VERSION=${{ env.NEW_VERSION }}; then
+          echo "Error: Failed to generate bundle"
+          exit 1
+        fi
+        echo "✓ Bundle generated successfully"
+        
+        # Build bundle image
+        echo "Building bundle image..."
+        if ! make bundle-build PROJECT_VERSION=${{ env.NEW_VERSION }}; then
+          echo "Error: Failed to build bundle image"
+          exit 1
+        fi
+        echo "✓ Bundle image built and pushed successfully"
+        
+        # Build index image
+        echo "Building index image..."
+        if ! make index PROJECT_VERSION=${{ env.NEW_VERSION }}; then
+          echo "Error: Failed to build index image"
+          exit 1
+        fi
+        echo "✓ Index image built and pushed successfully"
+        
+        echo "✓ All images built and pushed successfully"
 
     - name: Generate release manifests
       run: |
-        make release-manifests PROJECT_VERSION=${{ env.NEW_VERSION }}
+        echo "Generating release manifests for version: ${{ env.NEW_VERSION }}"
+        
+        if ! make release-manifests PROJECT_VERSION=${{ env.NEW_VERSION }}; then
+          echo "Error: Failed to generate release manifests"
+          exit 1
+        fi
+        
+        # Validate generated manifests
+        EXPECTED_FILES=(
+          "release/${{ env.NEW_VERSION }}/aws-neuron-operator.yaml"
+          "release/${{ env.NEW_VERSION }}/nfd-rule.yaml"
+          "release/${{ env.NEW_VERSION }}/deviceconfig-sample.yaml"
+        )
+        
+        for file in "${EXPECTED_FILES[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            echo "Error: Missing expected manifest file: $file"
+            exit 1
+          fi
+          
+          if [[ ! -s "$file" ]]; then
+            echo "Error: Manifest file is empty: $file"
+            exit 1
+          fi
+          
+          echo "✓ Validated: $file"
+        done
+        
+        echo "✓ Release manifests generated and validated successfully"
+
+
 
     - name: Commit and tag
       run: |
+        echo "Configuring git and creating release tag..."
+        
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        
         CURRENT_BRANCH=$(git branch --show-current)
-        if [ "${{ inputs.bump_type }}" != "none" ]; then
-          git add VERSION
-          git commit -m "Bump version to ${{ env.NEW_VERSION }}"
+        echo "Current branch: $CURRENT_BRANCH"
+        
+        # Check if tag already exists
+        if git tag -l "v${{ env.NEW_VERSION }}" | grep -q "v${{ env.NEW_VERSION }}"; then
+          echo "Error: Tag v${{ env.NEW_VERSION }} already exists"
+          exit 1
         fi
-        git tag "v${{ env.NEW_VERSION }}"
-        git push origin $CURRENT_BRANCH
-        git push origin "v${{ env.NEW_VERSION }}"
+        
+        # Commit version change if needed
+        if [ "${{ inputs.bump_type }}" != "none" ]; then
+          echo "Committing version change..."
+          
+          if ! git add VERSION; then
+            echo "Error: Failed to stage VERSION file"
+            exit 1
+          fi
+          
+          if ! git commit -m "Bump version to ${{ env.NEW_VERSION }}"; then
+            echo "Error: Failed to commit version change"
+            exit 1
+          fi
+          
+          echo "✓ Version change committed"
+        fi
+        
+        # Create tag
+        echo "Creating tag v${{ env.NEW_VERSION }}..."
+        if ! git tag "v${{ env.NEW_VERSION }}"; then
+          echo "Error: Failed to create tag"
+          exit 1
+        fi
+        
+        # Push changes with retry logic
+        echo "Pushing changes to remote..."
+        for i in {1..3}; do
+          if git push origin $CURRENT_BRANCH && git push origin "v${{ env.NEW_VERSION }}"; then
+            echo "✓ Changes pushed successfully"
+            break
+          elif [ $i -eq 3 ]; then
+            echo "Error: Failed to push changes after 3 attempts"
+            exit 1
+          else
+            echo "Push attempt $i failed, retrying..."
+            sleep 5
+          fi
+        done
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
