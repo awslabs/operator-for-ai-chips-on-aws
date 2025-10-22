@@ -9,6 +9,7 @@ on:
         default: 'minor'
         type: choice
         options:
+        - none
         - patch
         - minor
         - major
@@ -52,10 +53,15 @@ jobs:
     - name: Bump version
       run: |
         CURRENT_VERSION=$(cat VERSION)
-        NEW_VERSION=$(semver -i ${{ inputs.bump_type }} $CURRENT_VERSION)
-        echo $NEW_VERSION > VERSION
+        if [ "${{ inputs.bump_type }}" = "none" ]; then
+          NEW_VERSION=$CURRENT_VERSION
+          echo "Using current version: $NEW_VERSION"
+        else
+          NEW_VERSION=$(semver -i ${{ inputs.bump_type }} $CURRENT_VERSION)
+          echo $NEW_VERSION > VERSION
+          echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
+        fi
         echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-        echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
 
     - name: Build and push images
       run: |
@@ -71,10 +77,13 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add VERSION
-        git commit -m "Bump version to ${{ env.NEW_VERSION }}"
+        CURRENT_BRANCH=$(git branch --show-current)
+        if [ "${{ inputs.bump_type }}" != "none" ]; then
+          git add VERSION
+          git commit -m "Bump version to ${{ env.NEW_VERSION }}"
+        fi
         git tag "v${{ env.NEW_VERSION }}"
-        git push origin main
+        git push origin $CURRENT_BRANCH
         git push origin "v${{ env.NEW_VERSION }}"
 
     - name: Create GitHub Release
