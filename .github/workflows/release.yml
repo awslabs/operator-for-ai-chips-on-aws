@@ -66,6 +66,7 @@ jobs:
     - name: Build and push images
       run: |
         make docker-build PROJECT_VERSION=${{ env.NEW_VERSION }}
+        make bundle PROJECT_VERSION=${{ env.NEW_VERSION }}
         make bundle-build PROJECT_VERSION=${{ env.NEW_VERSION }}
         make index PROJECT_VERSION=${{ env.NEW_VERSION }}
 
