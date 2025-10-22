@@ -1,0 +1,87 @@
+name: Republish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to republish (e.g., 0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR Public
+      uses: aws-actions/amazon-ecr-login@v2
+      with:
+        registry-type: public
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push images
+      run: |
+        make docker-build PROJECT_VERSION=${{ inputs.version }}
+        make bundle-build PROJECT_VERSION=${{ inputs.version }}
+        make index PROJECT_VERSION=${{ inputs.version }}
+
+    - name: Generate release manifests
+      run: |
+        make release-manifests PROJECT_VERSION=${{ inputs.version }}
+
+    - name: Update GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "v${{ inputs.version }}"
+        name: "Release v${{ inputs.version }}"
+        body: |
+          ## AWS Neuron Operator v${{ inputs.version }}
+          
+          ### Quick Install
+          ```bash
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ inputs.version }}/aws-neuron-operator.yaml
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ inputs.version }}/deviceconfig-sample.yaml
+          ```
+          
+          ### Container Images
+          
+          **Direct Installation:**
+          - Operator: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator:v${{ inputs.version }}`
+          
+          **OLM Installation:**
+          - Bundle: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-bundle:v${{ inputs.version }}`
+          - Index: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-index:v${{ inputs.version }}`
+          
+          ### OLM Install Steps
+          ```bash
+          # 1. Apply NFD rule
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ inputs.version }}/nfd-rule.yaml
+          
+          # 2. Create CatalogSource with index image above
+          # 3. Create Subscription in ai-operator-on-aws namespace
+          # See release notes for complete YAML examples
+          ```
+        files: |
+          release/${{ inputs.version }}/aws-neuron-operator.yaml
+          release/${{ inputs.version }}/nfd-rule.yaml
+          release/${{ inputs.version }}/deviceconfig-sample.yaml
+        generate_release_notes: true

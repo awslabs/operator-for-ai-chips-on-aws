@@ -1,18 +1,12 @@
 # PROJECT_VERSION defines the project version for the bundle.
-# Update this value when you upgrade the version of your project.
-# To re-generate a bundle for another specific version without changing the standard setup, you can:
-# - use the PROJECT_VERSION as arg of the bundle target (e.g make bundle PROJECT_VERSION=0.0.2)
-# - use environment variables to overwrite this value (e.g export PROJECT_VERSION=0.0.2)
-PROJECT_VERSION ?= 0.0.1
+# Read from VERSION file or override with environment variable
+PROJECT_VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.0.1")
 
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 
 # IMAGE_TAG_BASE defines the docker.io namespace and part of the image name for remote images.
 # This variable is used to construct full image tags for bundle and catalog images.
-#
-# For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# quay.io/yshnaidm/amd-gpu-operator-bundle:$PROJECT_VERSION and quay.io/yshnaidm/amd-gpu-operator-catalog:$PROJECT_VERSION.
-IMAGE_TAG_BASE ?= quay.io/edge-infrastructure/aws-neuron-operator
+IMAGE_TAG_BASE ?= public.ecr.aws/q5p6u7h8/neuron-openshift/operator
 
 # This is the default tag of all images made by this Makefile.
 IMAGE_TAG ?= v$(PROJECT_VERSION)
@@ -247,3 +241,25 @@ index: opm
 	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG} --generate -d Dockerfile.index --container-tool docker
 	docker buildx build --platform linux/amd64 -t $(INDEX_IMG) -f Dockerfile.index --push .
 	rm -rf Dockerfile.index database
+
+##@ Release
+
+.PHONY: version
+version: ## Show current version
+	@echo $(PROJECT_VERSION)
+
+.PHONY: bump-major
+bump-major: ## Bump major version
+	./hack/bump-version.sh major
+
+.PHONY: bump-minor
+bump-minor: ## Bump minor version
+	./hack/bump-version.sh minor
+
+.PHONY: bump-patch
+bump-patch: ## Bump patch version
+	./hack/bump-version.sh patch
+
+.PHONY: release-manifests
+release-manifests: manifests kustomize ## Generate customer-ready manifests for release.
+	./hack/generate-release-manifests.sh $(PROJECT_VERSION) $(IMG)
