@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+        - none
+        - patch
+        - minor
+        - major
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install semver
+      run: npm install -g semver
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR Public
+      uses: aws-actions/amazon-ecr-login@v2
+      with:
+        registry-type: public
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Bump version
+      run: |
+        CURRENT_VERSION=$(cat VERSION)
+        if [ "${{ inputs.bump_type }}" = "none" ]; then
+          NEW_VERSION=$CURRENT_VERSION
+          echo "Using current version: $NEW_VERSION"
+        else
+          NEW_VERSION=$(semver -i ${{ inputs.bump_type }} $CURRENT_VERSION)
+          echo $NEW_VERSION > VERSION
+          echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
+        fi
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+    - name: Build and push images
+      run: |
+        make docker-build PROJECT_VERSION=${{ env.NEW_VERSION }}
+        make bundle-build PROJECT_VERSION=${{ env.NEW_VERSION }}
+        make index PROJECT_VERSION=${{ env.NEW_VERSION }}
+
+    - name: Generate release manifests
+      run: |
+        make release-manifests PROJECT_VERSION=${{ env.NEW_VERSION }}
+
+    - name: Commit and tag
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        CURRENT_BRANCH=$(git branch --show-current)
+        if [ "${{ inputs.bump_type }}" != "none" ]; then
+          git add VERSION
+          git commit -m "Bump version to ${{ env.NEW_VERSION }}"
+        fi
+        git tag "v${{ env.NEW_VERSION }}"
+        git push origin $CURRENT_BRANCH
+        git push origin "v${{ env.NEW_VERSION }}"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "v${{ env.NEW_VERSION }}"
+        name: "Release v${{ env.NEW_VERSION }}"
+        body: |
+          ## AWS Neuron Operator v${{ env.NEW_VERSION }}
+          
+          ### Quick Install
+          ```bash
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ env.NEW_VERSION }}/aws-neuron-operator.yaml
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ env.NEW_VERSION }}/deviceconfig-sample.yaml
+          ```
+          
+          ### Container Images
+          
+          **Direct Installation:**
+          - Operator: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator:v${{ env.NEW_VERSION }}`
+          
+          **OLM Installation:**
+          - Bundle: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-bundle:v${{ env.NEW_VERSION }}`
+          - Index: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-index:v${{ env.NEW_VERSION }}`
+          
+          ### Installation Methods
+          
+          **Option 1: Direct Install (Recommended)**
+          ```bash
+          # Install NFD and KMM operators from OperatorHub first
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ env.NEW_VERSION }}/aws-neuron-operator.yaml
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ env.NEW_VERSION }}/deviceconfig-sample.yaml
+          ```
+          
+          **Option 2: OLM Install**
+          ```bash
+          # 1. Apply NFD rule first
+          kubectl apply -f https://github.com/awslabs/operator-for-ai-chips-on-aws/releases/download/v${{ env.NEW_VERSION }}/nfd-rule.yaml
+          
+          # 2. Create namespace
+          kubectl create namespace ai-operator-on-aws
+          
+          # 3. Create OperatorGroup
+          kubectl apply -f - <<EOF
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: aws-neuron-operator
+            namespace: ai-operator-on-aws
+          EOF
+          
+          # 4. Create CatalogSource
+          kubectl apply -f - <<EOF
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: CatalogSource
+          metadata:
+            name: aws-neuron-operator
+            namespace: openshift-marketplace
+          spec:
+            sourceType: grpc
+            image: public.ecr.aws/q5p6u7h8/neuron-openshift/operator-index:v${{ env.NEW_VERSION }}
+            displayName: AWS Neuron Operator Catalog
+          EOF
+          
+          # 5. Create Subscription
+          kubectl apply -f - <<EOF
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: aws-neuron-operator-sub
+            namespace: ai-operator-on-aws
+          spec:
+            channel: "alpha"
+            installPlanApproval: Automatic
+            name: aws-neuron-operator
+            source: aws-neuron-operator
+            sourceNamespace: openshift-marketplace
+          EOF
+          ```
+          
+          See [INSTALL.md](https://github.com/awslabs/operator-for-ai-chips-on-aws/blob/main/INSTALL.md) for detailed instructions.
+        files: |
+          release/${{ env.NEW_VERSION }}/aws-neuron-operator.yaml
+          release/${{ env.NEW_VERSION }}/nfd-rule.yaml
+          release/${{ env.NEW_VERSION }}/deviceconfig-sample.yaml
+        generate_release_notes: true
