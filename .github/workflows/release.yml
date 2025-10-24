@@ -1,18 +1,11 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      bump_type:
-        description: 'Version bump type'
-        required: true
-        default: 'minor'
-        type: choice
-        options:
-        - none
-        - patch
-        - minor
-        - major
+  push:
+    branches:
+      - main
+    paths:
+      - 'VERSION'
 
 jobs:
   release:
@@ -37,21 +30,38 @@ jobs:
           go.sum
           go.mod
 
-    - name: Install semver
+    - name: Read and validate version
       run: |
-        echo "Installing semver tool..."
-        if ! npm install -g semver; then
-          echo "Error: Failed to install semver tool"
+        echo "Reading version from VERSION file..."
+        
+        # Validate VERSION file exists and is readable
+        if [[ ! -f "VERSION" ]]; then
+          echo "Error: VERSION file not found"
           exit 1
         fi
         
-        # Verify installation
-        if ! command -v semver &> /dev/null; then
-          echo "Error: semver tool not found after installation"
+        VERSION=$(cat VERSION | tr -d '[:space:]')
+        if [[ -z "$VERSION" ]]; then
+          echo "Error: VERSION file is empty"
           exit 1
         fi
         
-        echo "✓ semver tool installed successfully"
+        echo "Found version: $VERSION"
+        
+        # Validate version format (basic semantic version check)
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Version '$VERSION' is not a valid semantic version (X.Y.Z)"
+          exit 1
+        fi
+        
+        # Check if tag already exists
+        if git tag -l "v$VERSION" | grep -q "v$VERSION"; then
+          echo "Error: Tag v$VERSION already exists"
+          exit 1
+        fi
+        
+        echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "✓ Version validation completed: $VERSION"
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -119,53 +129,7 @@ jobs:
         
         echo "✓ OpenShift CLI installed successfully"
 
-    - name: Bump version
-      run: |
-        echo "Processing version bump..."
-        
-        # Validate VERSION file exists and is readable
-        if [[ ! -f "VERSION" ]]; then
-          echo "Error: VERSION file not found"
-          exit 1
-        fi
-        
-        CURRENT_VERSION=$(cat VERSION)
-        if [[ -z "$CURRENT_VERSION" ]]; then
-          echo "Error: VERSION file is empty"
-          exit 1
-        fi
-        
-        echo "Current version: $CURRENT_VERSION"
-        
-        # Validate current version format
-        if ! semver "$CURRENT_VERSION" > /dev/null 2>&1; then
-          echo "Error: Current version '$CURRENT_VERSION' is not a valid semantic version"
-          exit 1
-        fi
-        
-        if [ "${{ inputs.bump_type }}" = "none" ]; then
-          NEW_VERSION=$CURRENT_VERSION
-          echo "Using current version: $NEW_VERSION"
-        else
-          echo "Bumping version with type: ${{ inputs.bump_type }}"
-          
-          if ! NEW_VERSION=$(semver -i ${{ inputs.bump_type }} $CURRENT_VERSION); then
-            echo "Error: Failed to bump version from $CURRENT_VERSION"
-            exit 1
-          fi
-          
-          echo $NEW_VERSION > VERSION
-          echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
-        fi
-        
-        # Validate new version
-        if [[ -z "$NEW_VERSION" ]]; then
-          echo "Error: New version is empty"
-          exit 1
-        fi
-        
-        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-        echo "✓ Version processing completed: $NEW_VERSION"
+
 
     - name: Build and push images
       run: |
@@ -249,29 +213,6 @@ jobs:
         CURRENT_BRANCH=$(git branch --show-current)
         echo "Current branch: $CURRENT_BRANCH"
         
-        # Check if tag already exists
-        if git tag -l "v${{ env.NEW_VERSION }}" | grep -q "v${{ env.NEW_VERSION }}"; then
-          echo "Error: Tag v${{ env.NEW_VERSION }} already exists"
-          exit 1
-        fi
-        
-        # Commit version change if needed
-        if [ "${{ inputs.bump_type }}" != "none" ]; then
-          echo "Committing version change..."
-          
-          if ! git add VERSION; then
-            echo "Error: Failed to stage VERSION file"
-            exit 1
-          fi
-          
-          if ! git commit -m "Bump version to ${{ env.NEW_VERSION }}"; then
-            echo "Error: Failed to commit version change"
-            exit 1
-          fi
-          
-          echo "✓ Version change committed"
-        fi
-        
         # Create tag
         echo "Creating tag v${{ env.NEW_VERSION }}..."
         if ! git tag "v${{ env.NEW_VERSION }}"; then
@@ -279,14 +220,14 @@ jobs:
           exit 1
         fi
         
-        # Push changes with retry logic
-        echo "Pushing changes to remote..."
+        # Push tag with retry logic
+        echo "Pushing tag to remote..."
         for i in {1..3}; do
-          if git push origin $CURRENT_BRANCH && git push origin "v${{ env.NEW_VERSION }}"; then
-            echo "✓ Changes pushed successfully"
+          if git push origin "v${{ env.NEW_VERSION }}"; then
+            echo "✓ Tag pushed successfully"
             break
           elif [ $i -eq 3 ]; then
-            echo "Error: Failed to push changes after 3 attempts"
+            echo "Error: Failed to push tag after 3 attempts"
             exit 1
           else
             echo "Push attempt $i failed, retrying..."

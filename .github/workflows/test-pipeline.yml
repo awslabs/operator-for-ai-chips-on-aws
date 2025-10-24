@@ -203,6 +203,18 @@ jobs:
         
         echo "Successfully generated test manifests"
 
+    - name: List generated artifacts
+      run: |
+        echo "Generated test artifacts:"
+        ls -la release/${{ env.PR_VERSION }}/
+        echo ""
+        echo "File contents summary:"
+        for file in release/${{ env.PR_VERSION }}/*.yaml; do
+          echo "=== $(basename $file) ==="
+          echo "Lines: $(wc -l < $file)"
+          echo "Size: $(du -h $file | cut -f1)"
+        done
+
     - name: Upload test artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -269,7 +281,15 @@ jobs:
         echo "- Index: \`582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift/operator-index:${{ env.PR_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Test Manifests" >> $GITHUB_STEP_SUMMARY
-        echo "Download the test manifests from the workflow artifacts above to test your changes." >> $GITHUB_STEP_SUMMARY
+        echo "**📥 How to Download:**" >> $GITHUB_STEP_SUMMARY
+        echo "1. Scroll to the bottom of this workflow run page" >> $GITHUB_STEP_SUMMARY
+        echo "2. Look for the **Artifacts** section" >> $GITHUB_STEP_SUMMARY
+        echo "3. Download: \`test-manifests-archive-pr-${{ inputs.pr_number }}\` (recommended)" >> $GITHUB_STEP_SUMMARY
+        echo "4. Extract: \`tar -xzf test-manifests-pr-${{ inputs.pr_number }}.tar.gz\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**📦 Available Artifacts:**" >> $GITHUB_STEP_SUMMARY
+        echo "- \`test-manifests-pr-${{ inputs.pr_number }}-${{ env.PR_VERSION }}\` (individual files)" >> $GITHUB_STEP_SUMMARY
+        echo "- \`test-manifests-archive-pr-${{ inputs.pr_number }}\` (tar.gz archive)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Quick Test Install" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
