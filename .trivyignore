@@ -1,0 +1,11 @@
+# Trivy ignore file for known acceptable vulnerabilities
+# Format: CVE-ID or vulnerability ID
+
+# Example: Ignore specific CVEs that are not applicable or have been assessed as acceptable risk
+# CVE-2023-12345
+
+# Add specific CVEs here that you've reviewed and accepted the risk for
+# Always document the reason and review date
+
+# Note: This file should be carefully managed and regularly reviewed
+# Each ignored vulnerability should have a corresponding security review ticket

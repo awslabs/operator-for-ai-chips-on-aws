@@ -295,6 +295,16 @@ test-manifests: manifests kustomize ## Generate test manifests for private regis
 	$(eval IMG := $(TEST_IMAGE_TAG_BASE)/operator:$(IMAGE_TAG))
 	./hack/generate-release-manifests.sh $(PROJECT_VERSION) $(IMG) --test-mode
 
+##@ Security
+
+.PHONY: security-scan
+security-scan: ## Run local security scans
+	./hack/security-scan.sh
+
+.PHONY: install-security-tools-macos
+install-security-tools-macos: ## Install security tools on macOS
+	./hack/install-security-tools-macos.sh
+
 ##@ Release
 
 .PHONY: version

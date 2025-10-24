@@ -269,7 +269,34 @@ jobs:
         
         echo "✓ All validation checks passed"
 
-
+    - name: Security scan test artifacts
+      run: |
+        echo "Running security scans on test artifacts..."
+        
+        # Install Trivy
+        sudo apt-get update
+        sudo apt-get install wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy
+        
+        # Scan the test image
+        TEST_IMG="582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift/operator:${{ env.PR_VERSION }}"
+        echo "Scanning test image: $TEST_IMG"
+        trivy image --severity HIGH,CRITICAL --exit-code 0 $TEST_IMG || {
+          echo "⚠ High/Critical vulnerabilities found in test image"
+          echo "Review recommended for security issues"
+        }
+        
+        # Scan test manifests
+        echo "Scanning test manifests..."
+        trivy config --severity HIGH,CRITICAL release/${{ env.PR_VERSION }}/ || {
+          echo "⚠ Security issues found in test manifests"
+          echo "Review recommended for security issues"
+        }
+        
+        echo "✓ Security scans completed"
 
     - name: Create artifact summary
       run: |

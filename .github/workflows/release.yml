@@ -129,8 +129,6 @@ jobs:
         
         echo "✓ OpenShift CLI installed successfully"
 
-
-
     - name: Build and push images
       run: |
         echo "Building and pushing images for version: ${{ env.NEW_VERSION }}"
@@ -201,7 +199,34 @@ jobs:
         
         echo "✓ Release manifests generated and validated successfully"
 
-
+    - name: Security scan release artifacts
+      run: |
+        echo "Running security scans on release artifacts..."
+        
+        # Install Trivy
+        sudo apt-get update
+        sudo apt-get install wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy
+        
+        # Scan the built image
+        echo "Scanning operator image..."
+        IMG="public.ecr.aws/q5p6u7h8/neuron-openshift/operator:v${{ env.NEW_VERSION }}"
+        trivy image --severity HIGH,CRITICAL --exit-code 0 $IMG || {
+          echo "⚠ High/Critical vulnerabilities found in operator image"
+          echo "Review recommended but not blocking release"
+        }
+        
+        # Scan Kubernetes manifests
+        echo "Scanning Kubernetes manifests..."
+        trivy config --severity HIGH,CRITICAL release/${{ env.NEW_VERSION }}/ || {
+          echo "⚠ Security issues found in manifests"
+          echo "Review recommended but not blocking release"
+        }
+        
+        echo "✓ Security scans completed"
 
     - name: Commit and tag
       run: |

@@ -61,6 +61,51 @@ To test changes before release:
 4. Click **Run workflow**
 5. Download test manifests from workflow artifacts
 
+## Security Scanning
+
+### Automated Security Scans
+
+All releases and PRs are automatically scanned for security vulnerabilities:
+
+- **Container Images**: Trivy scans for OS and application vulnerabilities
+- **Source Code**: CodeQL and Gosec analyze code for security issues
+- **Kubernetes Manifests**: Configuration scanning for security best practices
+- **Dependencies**: Go modules scanned for known vulnerabilities
+
+### Local Security Scanning
+
+#### First-time Setup (macOS)
+
+If you're on macOS, install security tools first:
+
+```bash
+# Install security tools via Homebrew (recommended)
+make install-security-tools-macos
+
+# Or install manually
+./hack/install-security-tools-macos.sh
+```
+
+#### Running Security Scans
+
+Run security scans locally before submitting PRs:
+
+```bash
+# Run comprehensive security scan
+make security-scan
+
+# Or run the script directly
+./hack/security-scan.sh
+```
+
+**Note for Apple Silicon (M1/M2/M3) users**: The script automatically handles ARM64 architecture and builds Docker images for the correct platform.
+
+### Security Reports
+
+- **GitHub Security Tab**: View detailed vulnerability reports
+- **Workflow Artifacts**: Download security scan reports
+- **Daily Scans**: Scheduled scans check for new vulnerabilities
+
 ## Troubleshooting
 
 ### Common Issues
@@ -77,9 +122,16 @@ To test changes before release:
 - Ensure VERSION file exists in repository root
 - File should contain only the version number
 
+**Security Scan Failures**
+- Review security scan results in GitHub Actions
+- Check the Security tab for detailed vulnerability reports
+- High/Critical vulnerabilities are reported but don't block releases
+- Consider updating base images or dependencies
+
 ### Getting Help
 
 1. Check workflow logs in GitHub Actions
 2. Verify VERSION file format and content
 3. Ensure no existing tag conflicts
 4. Validate semantic versioning format
+5. Review security scan results and reports

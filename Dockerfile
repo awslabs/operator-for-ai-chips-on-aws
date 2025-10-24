@@ -5,6 +5,8 @@ ARG TARGETARCH
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
+# ENV GOPROXY=direct
+# ENV GOSUMDB=off
 COPY go.mod go.mod
 COPY go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much
@@ -20,7 +22,11 @@ COPY Makefile Makefile
 # Build
 RUN make manager
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
+
+# Update packages to get latest security fixes
+RUN microdnf update -y && microdnf clean all
+
 WORKDIR /
 COPY --from=builder /workspace/manager .
 

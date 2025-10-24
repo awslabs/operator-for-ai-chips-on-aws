@@ -3,7 +3,7 @@ kind: Kustomization
 
 images:
 - name: controller
-  newName: quay.io/edge-infrastructure/aws-neuron-operator
+  newName: public.ecr.aws/q5p6u7h8/neuron-openshift/operator
   newTag: v0.0.1
 
 resources:
