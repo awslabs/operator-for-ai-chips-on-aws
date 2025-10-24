@@ -301,17 +301,7 @@ test-manifests: manifests kustomize ## Generate test manifests for private regis
 version: ## Show current version
 	@echo $(PROJECT_VERSION)
 
-.PHONY: bump-major
-bump-major: ## Bump major version
-	./hack/bump-version.sh major
 
-.PHONY: bump-minor
-bump-minor: ## Bump minor version
-	./hack/bump-version.sh minor
-
-.PHONY: bump-patch
-bump-patch: ## Bump patch version
-	./hack/bump-version.sh patch
 
 .PHONY: release-manifests
 release-manifests: manifests kustomize ## Generate customer-ready manifests for release.
