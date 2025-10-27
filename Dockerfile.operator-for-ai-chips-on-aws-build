@@ -11,3 +11,6 @@ RUN go install go.uber.org/mock/mockgen@v0.3.0
 RUN curl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /tmp/kubectl
 RUN install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 COPY --from=quay.io/openshift/origin-cli:latest /usr/bin/oc /usr/bin
+RUN curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+    -o /usr/local/bin/yq && \
+    chmod +x /usr/local/bin/yq
