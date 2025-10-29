@@ -5,7 +5,7 @@ metadata:
   namespace:  ai-operator-on-aws
 spec:
   useInTreeDrivers: false
-  driversImage: ghcr.io/awslabs/kmod-with-kmm-for-ai-chips-on-aws/neuron-driver:2.22.2.0
+  driversImage: public.ecr.aws/q5p6u7h8/neuron-openshift/neuron-kernel-module:2.23.9.0
   devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.23.30.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.28.5-eks-1-28-latest
   schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.23.30.0

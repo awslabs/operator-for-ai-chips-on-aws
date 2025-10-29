@@ -215,6 +215,7 @@ operator-sdk:
 		chmod +x ${OPERATOR_SDK}; \
 	fi
 
+SUGGESTED_NAMESPACE := $(shell yq -r '.namespace' config/default/kustomization.yaml)
 .PHONY: bundle
 bundle: operator-sdk manifests kustomize
 	rm -fr ./bundle
@@ -225,7 +226,8 @@ bundle: operator-sdk manifests kustomize
 		     PKG=aws-neuron-operator \
 		     SOURCE_DIR=$(dir $(realpath $(lastword $(MAKEFILE_LIST)))) \
 		     ./hack/generate-bundle
-
+	yq -i '.metadata.annotations."operatorframework.io/suggested-namespace" = "$(SUGGESTED_NAMESPACE)"' \
+		bundle/manifests/*.clusterserviceversion.yaml
 	${OPERATOR_SDK} bundle validate ./bundle
 
 .PHONY: bundle-build
