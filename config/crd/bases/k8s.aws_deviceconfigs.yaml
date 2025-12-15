@@ -48,6 +48,10 @@ spec:
               devicePluginImage:
                 description: device plugin image
                 type: string
+              driverVersion:
+                description: defines the Version of the neuron drivers. used for rolling
+                  upgrade
+                type: string
               driversImage:
                 description: defines image that includes drivers
                 type: string

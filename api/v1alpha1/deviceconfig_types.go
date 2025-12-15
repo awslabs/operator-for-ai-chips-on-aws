@@ -34,6 +34,10 @@ type DeviceConfigSpec struct {
 	// +kubebuilder:validation:Required
 	DriversImage string `json:"driversImage,omitempty"`
 
+	// defines the Version of the neuron drivers. used for rolling upgrade
+	// +optional
+	DriverVersion string `json:"driverVersion,omitempty"`
+
 	// device plugin image
 	// +kubebuilder:validation:Required
 	DevicePluginImage string `json:"devicePluginImage,omitempty"`
