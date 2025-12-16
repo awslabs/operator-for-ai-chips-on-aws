@@ -86,3 +86,8 @@ spec:
             memory: 64Mi
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
+      tolerations:
+        - key: aws-neuron-driver-upgrade
+          operator: Equal
+          value: "true"
+          effect: NoExecute

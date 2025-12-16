@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 )
 
@@ -75,11 +76,20 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 				},
 			},
 			ImagePullPolicy: v1.PullAlways,
+			Version:         devConfig.Spec.DriverVersion,
 		},
 	}
 	mod.Spec.ModuleLoader.ServiceAccountName = "awslabs-gpu-operator-kmm-module-loader"
 	mod.Spec.ImageRepoSecret = devConfig.Spec.ImageRepoSecret
 	mod.Spec.Selector = getNodeSelector(devConfig)
+	mod.Spec.Tolerations = []v1.Toleration{
+		{
+			Key:      constants.UpgradeTaintTolerationKey,
+			Value:    "true",
+			Operator: v1.TolerationOpEqual,
+			Effect:   v1.TaintEffectNoExecute,
+		},
+	}
 	return nil
 }
 

@@ -8,7 +8,7 @@ spec:
     container:
       modprobe:
         moduleName: neuron
-        firmwarePath: 
+        firmwarePath: "" 
       kernelMappings:
         - regexp: "^.+$"
           containerImage: driversImage
@@ -16,5 +16,10 @@ spec:
           - neuron
       imagePullPolicy: Always
     serviceAccountName: "awslabs-gpu-operator-kmm-module-loader"
+  tolerations:
+  - key: "aws-neuron-driver-upgrade"
+    operator: "Equal"
+    value: "true"
+    effect: "NoExecute"
   selector:
     feature.node.kubernetes.io/pci-1d0f.present: "true"
