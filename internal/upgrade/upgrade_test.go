@@ -196,11 +196,27 @@ var _ = Describe("GetUpgradedNode", func() {
 					},
 				},
 			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node3",
+					Labels: map[string]string{
+						moduleVersionLabel:      devConfig.Spec.DriverVersion,
+						moduleVersionReadyLabel: devConfig.Spec.DriverVersion,
+					},
+				},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{
+						{
+							Key: constants.UpgradeTaintTolerationKey,
+						},
+					},
+				},
+			},
 		}
 
 		upgradedNode := upgradeAPI.GetUpgradedNode(ctx, devConfig, nodes)
 		Expect(upgradedNode).NotTo(BeNil())
-		Expect(upgradedNode.Name).To(Equal("node2"))
+		Expect(upgradedNode.Name).To(Equal("node3"))
 	})
 
 	It("should return nil when no node is upgraded", func() {

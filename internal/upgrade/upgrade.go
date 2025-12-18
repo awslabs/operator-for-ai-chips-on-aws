@@ -70,7 +70,7 @@ func (ui *upgradeImpl) GetTargetedNodes(ctx context.Context, devConfig *awslabsv
 func (ui *upgradeImpl) GetUpgradedNode(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node {
 	for _, node := range nodes {
 		upgradeState := getNodeUpgradeState(node, devConfig)
-		if upgradeState == nodeUpgraded {
+		if upgradeState == nodeUpgraded && isNodeTainted(node) {
 			return &node
 		}
 	}
@@ -197,4 +197,13 @@ func isNewNodeForUpgrade(node *v1.Node, devConfig *awslabsv1alpha1.DeviceConfig)
 	nodeLabels := node.GetLabels()
 	_, ok := nodeLabels[kmmlabels.GetModuleVersionLabelName(devConfig.Namespace, devConfig.Name)]
 	return !ok
+}
+
+func isNodeTainted(node v1.Node) bool {
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == constants.UpgradeTaintTolerationKey {
+			return true
+		}
+	}
+	return false
 }
