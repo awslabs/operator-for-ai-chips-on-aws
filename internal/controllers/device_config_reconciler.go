@@ -22,17 +22,21 @@ import (
 
 	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -45,6 +49,7 @@ const (
 // ModuleReconciler reconciles a Module object
 type DeviceConfigReconciler struct {
 	helper deviceConfigReconcilerHelperAPI
+	filter *filter.Filter
 }
 
 func NewDeviceConfigReconciler(
@@ -52,10 +57,12 @@ func NewDeviceConfigReconciler(
 	kmmHandler kmmmodule.KMMModuleAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
+	filter *filter.Filter,
 	scheme *runtime.Scheme) *DeviceConfigReconciler {
 	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, csHandler, nmHandler, scheme)
 	return &DeviceConfigReconciler{
 		helper: helper,
+		filter: filter,
 	}
 }
 
@@ -66,6 +73,11 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&kmmv1beta1.Module{}).
 		Owns(&appsv1.DaemonSet{}).
 		Owns(&appsv1.Deployment{}).
+		Watches(
+			&corev1.Node{},
+			handler.EnqueueRequestsFromMapFunc(r.filter.FindDeviceConfigForNodeChange),
+			builder.WithPredicates(r.filter.GetNodePredicate()),
+		).
 		Named(DeviceConfigReconcilerName).
 		Complete(
 			reconcile.AsReconciler[*awslabsv1alpha1.DeviceConfig](mgr.GetClient(), r),
@@ -79,6 +91,7 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=create;delete;get;list;patch;watch;create
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=create;delete;get;list;patch;watch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=create;delete;get;list;patch;watch
+//+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;patch;watch
 
 func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) (ctrl.Result, error) {
 	res := ctrl.Result{}
