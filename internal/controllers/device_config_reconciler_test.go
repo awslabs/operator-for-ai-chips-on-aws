@@ -199,74 +199,34 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		Namespace: devConfigNamespace,
 	}
 
-	It("failed to get Metrics daemonset", func() {
-		kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(fmt.Errorf("some error"))
-
-		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("node metrics daemonset exists", func() {
-		gomock.InOrder(
-			kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(nil),
-			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil),
-		)
-
-		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
-		Expect(err).To(BeNil())
-	})
-
-	It("failed to get KMM Module", func() {
-		gomock.InOrder(
-			kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "dsName")),
-			kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Return(fmt.Errorf("some error")),
-		)
-
-		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("KMM module not found, removing finalizer", func() {
+	DescribeTable("finalizer good flow", func(nodeMetricsDSExists,
+		kmmModuleExists bool) {
 		expectedDevConfig := devConfig.DeepCopy()
-		expectedDevConfig.SetFinalizers([]string{})
-		controllerutil.AddFinalizer(devConfig, deviceConfigFinalizer)
-
-		gomock.InOrder(
-			kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "dsName")),
-			kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "moduleName")),
-			kubeClient.EXPECT().Patch(ctx, expectedDevConfig, gomock.Any()).Return(nil),
-		)
-
-		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
-	It("KMM module found, deleting it", func() {
-		mod := kmmv1beta1.Module{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      devConfigName,
-				Namespace: devConfigNamespace,
-			},
+		if nodeMetricsDSExists {
+			kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(nil)
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
+			goto executeTestFunction
 		}
-
-		expectedDevConfig := devConfig.DeepCopy()
+		kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "dsName"))
+		if kmmModuleExists {
+			kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Return(nil)
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
+			goto executeTestFunction
+		}
+		kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "modName"))
+		upgradeHelper.EXPECT().RemoveUpgradeLabels(ctx, devConfig).Return(nil)
 		expectedDevConfig.SetFinalizers([]string{})
 		controllerutil.AddFinalizer(devConfig, deviceConfigFinalizer)
+		kubeClient.EXPECT().Patch(ctx, expectedDevConfig, gomock.Any()).Return(nil)
 
-		gomock.InOrder(
-			kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "dsName")),
-			kubeClient.EXPECT().Get(ctx, nn, gomock.Any()).Do(
-				func(_ interface{}, _ interface{}, mod *kmmv1beta1.Module, _ ...client.GetOption) {
-					mod.Name = nn.Name
-					mod.Namespace = nn.Namespace
-				},
-			),
-			kubeClient.EXPECT().Delete(ctx, &mod).Return(nil),
-		)
-
+	executeTestFunction:
 		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
-	})
+	},
+		Entry("node metrics daemonset exists", true, false),
+		Entry("kmm module exists", false, true),
+		Entry("node metrics daemonset and kmm module do not exist", false, false),
+	)
 })
 
 var _ = Describe("handleKMMModule", func() {
