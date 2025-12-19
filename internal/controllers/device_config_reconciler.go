@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/upgrade"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,11 +56,12 @@ type DeviceConfigReconciler struct {
 func NewDeviceConfigReconciler(
 	client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
+	upgradeHandler upgrade.UpgradeAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
 	filter *filter.Filter,
 	scheme *runtime.Scheme) *DeviceConfigReconciler {
-	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, csHandler, nmHandler, scheme)
+	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, upgradeHandler, csHandler, nmHandler, scheme)
 	return &DeviceConfigReconciler{
 		helper: helper,
 		filter: filter,
@@ -117,6 +119,12 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 		return res, fmt.Errorf("failed to handle KMM module for DeviceConfig: %v", err)
 	}
 
+	logger.Info("start rolling upgrade reconciliation")
+	err = r.helper.handleModuleVersionUpgrade(ctx, devConfig)
+	if err != nil {
+		return res, fmt.Errorf("failed to handle KMM module version upgrade for DeviceConfig: %v", err)
+	}
+
 	logger.Info("start custom scheduler reconciliation")
 	err = r.helper.handleCustomScheduler(ctx, devConfig)
 	if err != nil {
@@ -137,29 +145,33 @@ type deviceConfigReconcilerHelperAPI interface {
 	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
+	handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleCustomScheduler(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
 }
 
 type deviceConfigReconcilerHelper struct {
-	client     client.Client
-	kmmHandler kmmmodule.KMMModuleAPI
-	csHandler  customscheduler.CustomScheduler
-	nmHandler  nodemetrics.NodeMetrics
-	scheme     *runtime.Scheme
+	client         client.Client
+	kmmHandler     kmmmodule.KMMModuleAPI
+	upgradeHandler upgrade.UpgradeAPI
+	csHandler      customscheduler.CustomScheduler
+	nmHandler      nodemetrics.NodeMetrics
+	scheme         *runtime.Scheme
 }
 
 func newDeviceConfigReconcilerHelper(client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
+	upgradeHandler upgrade.UpgradeAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
 	scheme *runtime.Scheme) deviceConfigReconcilerHelperAPI {
 	return &deviceConfigReconcilerHelper{
-		client:     client,
-		kmmHandler: kmmHandler,
-		csHandler:  csHandler,
-		nmHandler:  nmHandler,
-		scheme:     scheme,
+		client:         client,
+		kmmHandler:     kmmHandler,
+		upgradeHandler: upgradeHandler,
+		csHandler:      csHandler,
+		nmHandler:      nmHandler,
+		scheme:         scheme,
 	}
 }
 
@@ -229,6 +241,40 @@ func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, d
 
 	return err
 
+}
+
+func (dcrh *deviceConfigReconcilerHelper) handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+	// check if rolling upgrade should be supported
+	if devConfig.Spec.DriverVersion == "" {
+		return nil
+	}
+	logger := log.FromContext(ctx).WithValues("namespace", devConfig.Namespace, "name", devConfig.Name)
+	targetedNodes, err := dcrh.upgradeHandler.GetTargetedNodes(ctx, devConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get nodes targeted by the DeviceConfig %s/%s: %v", devConfig.Namespace, devConfig.Name, err)
+	}
+
+	logger.Info("targeted nodes in handleModuleVersionUpgrade", "targetedNodes", targetedNodes)
+
+	node := dcrh.upgradeHandler.GetUpgradedNode(ctx, devConfig, targetedNodes)
+
+	logger.Info("upgraded node in handleModuleVersionUpgrade", "upgraded node", node)
+
+	err = dcrh.upgradeHandler.UncordonUpgradedNode(ctx, node)
+	if err != nil {
+		return fmt.Errorf("failed to finzalize upgraded nodes for DeviceConfig %s/%s: %v", devConfig.Namespace, devConfig.Name, err)
+	}
+
+	node = dcrh.upgradeHandler.GetNodeForUpgrade(ctx, devConfig, targetedNodes)
+
+	logger.Info("node to upgraded in handleModuleVersionUpgrade", "node to upgrade", node)
+
+	err = dcrh.upgradeHandler.CordonNodeForUpgrade(ctx, devConfig, node)
+	if err != nil {
+		return fmt.Errorf("failed to cordon node %s for DeviceConfig %s/%s: %v", node.Name, devConfig.Namespace, devConfig.Name, err)
+	}
+
+	return dcrh.upgradeHandler.KickoffUpgrade(ctx, devConfig, node)
 }
 
 func (dcrh *deviceConfigReconcilerHelper) handleCustomScheduler(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {

@@ -81,6 +81,20 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleKMMModule(ctx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "handleKMMModule", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).handleKMMModule), ctx, devConfig)
 }
 
+// handleModuleVersionUpgrade mocks base method.
+func (m *MockdeviceConfigReconcilerHelperAPI) handleModuleVersionUpgrade(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "handleModuleVersionUpgrade", ctx, devConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// handleModuleVersionUpgrade indicates an expected call of handleModuleVersionUpgrade.
+func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleModuleVersionUpgrade(ctx, devConfig any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "handleModuleVersionUpgrade", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).handleModuleVersionUpgrade), ctx, devConfig)
+}
+
 // handleNodeMetrics mocks base method.
 func (m *MockdeviceConfigReconcilerHelperAPI) handleNodeMetrics(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
 	m.ctrl.T.Helper()

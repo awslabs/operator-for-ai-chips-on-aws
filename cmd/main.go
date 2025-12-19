@@ -38,6 +38,7 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/upgrade"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
@@ -90,12 +91,14 @@ func main() {
 
 	client := mgr.GetClient()
 	kmmHandler := kmmmodule.NewKMMModule(client, scheme)
+	upgradeHandler := upgrade.NewUpgradeAPI(client)
 	csHandler := customscheduler.NewCustomScheduler(scheme)
 	nmHandler := nodemetrics.NewNodeMetrcis(scheme)
 	filter := filter.New(client)
 	dcr := controllers.NewDeviceConfigReconciler(
 		client,
 		kmmHandler,
+		upgradeHandler,
 		csHandler,
 		nmHandler,
 		filter,

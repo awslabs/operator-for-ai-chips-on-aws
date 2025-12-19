@@ -25,11 +25,13 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/upgrade"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -62,6 +64,7 @@ var _ = Describe("Reconcile", func() {
 
 	DescribeTable("reconciler error flow", func(setFinalizerError,
 		handleKMMModuleError,
+		handleModuleVersionUpgradeError,
 		handleCustomSchedulerError,
 		handleMetricsError bool) {
 		devConfig := &awslabsv1alpha1.DeviceConfig{}
@@ -75,6 +78,11 @@ var _ = Describe("Reconcile", func() {
 			goto executeTestFunction
 		}
 		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
+		if handleModuleVersionUpgradeError {
+			mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(nil)
 		if handleCustomSchedulerError {
 			mockHelper.EXPECT().handleCustomScheduler(ctx, devConfig).Return(fmt.Errorf("some error"))
 			goto executeTestFunction
@@ -89,18 +97,19 @@ var _ = Describe("Reconcile", func() {
 	executeTestFunction:
 
 		res, err := dcr.Reconcile(ctx, devConfig)
-		if setFinalizerError || handleKMMModuleError || handleCustomSchedulerError || handleMetricsError {
+		if setFinalizerError || handleKMMModuleError || handleModuleVersionUpgradeError || handleCustomSchedulerError || handleMetricsError {
 			Expect(err).To(HaveOccurred())
 		} else {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).To(Equal(ctrl.Result{}))
 		}
 	},
-		Entry("good flow, no requeue", false, false, false, false),
-		Entry("setFinalizer failed", true, false, false, false),
-		Entry("handleKMMModule failed", false, true, false, false),
-		Entry("handleCustomScheduler failed", false, false, true, false),
-		Entry("handleMetrics failed", false, false, false, true),
+		Entry("good flow, no requeue", false, false, false, false, false),
+		Entry("setFinalizer failed", true, false, false, false, false),
+		Entry("handleKMMModule failed", false, true, false, false, false),
+		Entry("handleModuleVersionUpgrade failed", false, false, true, false, false),
+		Entry("handleCustomScheduler failed", false, false, false, true, false),
+		Entry("handleMetrics failed", false, false, false, false, true),
 	)
 
 	It("device config finalization", func() {
@@ -131,7 +140,7 @@ var _ = Describe("setFinalizer", func() {
 	BeforeEach(func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -160,14 +169,16 @@ var _ = Describe("setFinalizer", func() {
 
 var _ = Describe("finalizeDeviceConfig", func() {
 	var (
-		kubeClient *mock_client.MockClient
-		dcrh       deviceConfigReconcilerHelperAPI
+		kubeClient    *mock_client.MockClient
+		upgradeHelper *upgrade.MockUpgradeAPI
+		dcrh          deviceConfigReconcilerHelperAPI
 	)
 
 	BeforeEach(func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil)
+		upgradeHelper = upgrade.NewMockUpgradeAPI(ctrl)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, upgradeHelper, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -269,7 +280,7 @@ var _ = Describe("handleKMMModule", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		kmmHelper = kmmmodule.NewMockKMMModuleAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -319,6 +330,83 @@ var _ = Describe("handleKMMModule", func() {
 	})
 })
 
+var _ = Describe("handleModuleVersionUpgrade", func() {
+	var (
+		kubeClient    *mock_client.MockClient
+		upgradeHelper *upgrade.MockUpgradeAPI
+		dcrh          deviceConfigReconcilerHelperAPI
+	)
+
+	BeforeEach(func() {
+		ctrl := gomock.NewController(GinkgoT())
+		kubeClient = mock_client.NewMockClient(ctrl)
+		upgradeHelper = upgrade.NewMockUpgradeAPI(ctrl)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, upgradeHelper, nil, nil, nil)
+	})
+
+	ctx := context.Background()
+	devConfig := &awslabsv1alpha1.DeviceConfig{
+		Spec: awslabsv1alpha1.DeviceConfigSpec{
+			DriverVersion: "some verison",
+		},
+	}
+	targetedNodes := []corev1.Node{
+		{},
+		{},
+	}
+	upgradedNode := &corev1.Node{}
+	nodeForUpgrade := &corev1.Node{}
+
+	DescribeTable("upgrade good and error flow", func(getTargetedNodesError,
+		uncordonUpgradedNodeError,
+		cordonNodeForUpgradeError,
+		kickoffUpgradeError bool) {
+		if getTargetedNodesError {
+			upgradeHelper.EXPECT().GetTargetedNodes(ctx, devConfig).Return(nil, fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		upgradeHelper.EXPECT().GetTargetedNodes(ctx, devConfig).Return(targetedNodes, nil)
+		upgradeHelper.EXPECT().GetUpgradedNode(ctx, devConfig, targetedNodes).Return(upgradedNode)
+		if uncordonUpgradedNodeError {
+			upgradeHelper.EXPECT().UncordonUpgradedNode(ctx, upgradedNode).Return(fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		upgradeHelper.EXPECT().UncordonUpgradedNode(ctx, upgradedNode).Return(nil)
+		upgradeHelper.EXPECT().GetNodeForUpgrade(ctx, devConfig, targetedNodes).Return(nodeForUpgrade)
+		if cordonNodeForUpgradeError {
+			upgradeHelper.EXPECT().CordonNodeForUpgrade(ctx, devConfig, nodeForUpgrade).Return(fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		upgradeHelper.EXPECT().CordonNodeForUpgrade(ctx, devConfig, nodeForUpgrade).Return(nil)
+		if kickoffUpgradeError {
+			upgradeHelper.EXPECT().KickoffUpgrade(ctx, devConfig, nodeForUpgrade).Return(fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		upgradeHelper.EXPECT().KickoffUpgrade(ctx, devConfig, nodeForUpgrade).Return(nil)
+
+	executeTestFunction:
+
+		err := dcrh.handleModuleVersionUpgrade(ctx, devConfig)
+		if getTargetedNodesError || uncordonUpgradedNodeError || cordonNodeForUpgradeError || kickoffUpgradeError {
+			Expect(err).To(HaveOccurred())
+		} else {
+			Expect(err).ToNot(HaveOccurred())
+		}
+	},
+		Entry("good flow, no errors", false, false, false, false),
+		Entry("getTargetedNodes failed", true, false, false, false),
+		Entry("uncordonUpgradedNode failed", false, true, false, false),
+		Entry("cordonNodeForUpgrade failed", false, false, true, false),
+		Entry("kickoffUpgrade failed", false, false, false, true),
+	)
+
+	It("driverVersion is not defined in the Spec", func() {
+		devConfig := &awslabsv1alpha1.DeviceConfig{}
+		err := dcrh.handleModuleVersionUpgrade(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
 var _ = Describe("handleCustomScheduler", func() {
 	var (
 		kubeClient    *mock_client.MockClient
@@ -330,7 +418,7 @@ var _ = Describe("handleCustomScheduler", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		mockCDHandler = customscheduler.NewMockCustomScheduler(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, mockCDHandler, nil, scheme)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, mockCDHandler, nil, scheme)
 	})
 
 	ctx := context.Background()
@@ -405,7 +493,7 @@ var _ = Describe("handleNodeMetrics", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		nodeMetricsHelper = nodemetrics.NewMockNodeMetrics(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nodeMetricsHelper, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nodeMetricsHelper, nil)
 	})
 
 	ctx := context.Background()
