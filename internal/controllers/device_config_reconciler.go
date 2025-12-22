@@ -211,16 +211,23 @@ func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Conte
 	}
 	err = dcrh.client.Get(ctx, namespacedName, &mod)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			logger.Info("module already deleted, removing finalizer", "module", namespacedName)
-			devConfigCopy := devConfig.DeepCopy()
-			controllerutil.RemoveFinalizer(devConfig, deviceConfigFinalizer)
-			return dcrh.client.Patch(ctx, devConfig, client.MergeFrom(devConfigCopy))
+		if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get the requested Module %s: %v", namespacedName, err)
 		}
-		return fmt.Errorf("failed to get the requested Module %s: %v", namespacedName, err)
+	} else {
+		logger.Info("deleting KMM Module", "module", namespacedName)
+		return dcrh.client.Delete(ctx, &mod)
 	}
-	logger.Info("deleting KMM Module", "module", namespacedName)
-	return dcrh.client.Delete(ctx, &mod)
+
+	err = dcrh.upgradeHandler.RemoveUpgradeLabels(ctx, devConfig)
+	if err != nil {
+		return fmt.Errorf("failed to remove upgrade labels from nodes %s: %v", namespacedName, err)
+	}
+
+	logger.Info("module and upgrade labels already deleted, removing finalizer", "module", namespacedName)
+	devConfigCopy := devConfig.DeepCopy()
+	controllerutil.RemoveFinalizer(devConfig, deviceConfigFinalizer)
+	return dcrh.client.Patch(ctx, devConfig, client.MergeFrom(devConfigCopy))
 }
 
 func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
