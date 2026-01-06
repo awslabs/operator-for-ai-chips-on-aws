@@ -255,17 +255,15 @@ func (dcrh *deviceConfigReconcilerHelper) handleModuleVersionUpgrade(ctx context
 	if devConfig.Spec.DriverVersion == "" {
 		return nil
 	}
-	logger := log.FromContext(ctx).WithValues("namespace", devConfig.Namespace, "name", devConfig.Name)
+	logger := log.FromContext(ctx)
 	targetedNodes, err := dcrh.upgradeHandler.GetTargetedNodes(ctx, devConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get nodes targeted by the DeviceConfig %s/%s: %v", devConfig.Namespace, devConfig.Name, err)
 	}
 
-	logger.Info("targeted nodes in handleModuleVersionUpgrade", "targetedNodes", targetedNodes)
+	logger.Info("targeted nodes for rolling upgrade", "num nodes", len(targetedNodes))
 
 	node := dcrh.upgradeHandler.GetUpgradedNode(ctx, devConfig, targetedNodes)
-
-	logger.Info("upgraded node in handleModuleVersionUpgrade", "upgraded node", node)
 
 	err = dcrh.upgradeHandler.UncordonUpgradedNode(ctx, node)
 	if err != nil {
@@ -273,8 +271,6 @@ func (dcrh *deviceConfigReconcilerHelper) handleModuleVersionUpgrade(ctx context
 	}
 
 	node = dcrh.upgradeHandler.GetNodeForUpgrade(ctx, devConfig, targetedNodes)
-
-	logger.Info("node to upgraded in handleModuleVersionUpgrade", "node to upgrade", node)
 
 	err = dcrh.upgradeHandler.CordonNodeForUpgrade(ctx, devConfig, node)
 	if err != nil {
