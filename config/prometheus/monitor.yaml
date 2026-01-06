@@ -4,23 +4,62 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    control-plane: controller-manager
-    app.kubernetes.io/name: servicemonitor
-    app.kubernetes.io/instance: controller-manager-metrics-monitor
-    app.kubernetes.io/component: metrics
-    app.kubernetes.io/created-by: operator-for-ai-chips-on-aws
-    app.kubernetes.io/part-of: operator-for-ai-chips-on-aws
-    app.kubernetes.io/managed-by: kustomize
-  name: controller-manager-metrics-monitor
+    app.kubernetes.io/name:    awslabs-gpu
+  name: node-metrics-monitor
   namespace: system
 spec:
   endpoints:
     - path: /metrics
-      port: https
-      scheme: https
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-      tlsConfig:
-        insecureSkipVerify: true
+      port: metrics
+      scheme: http
+        #bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+        #tlsConfig:
+        #insecureSkipVerify: true
   selector:
     matchLabels:
-      control-plane: controller-manager
+      app.kubernetes.io/component: aws-neuron
+      app.kubernetes.io/role:      aws-neuron-gpu-metrics
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-k8s
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-k8s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus-k8s
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-k8s
+    namespace: openshift-monitoring
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-metrics-service
+  labels:
+    app.kubernetes.io/role:      aws-neuron-gpu-metrics
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/role:      aws-neuron-gpu-metrics
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: metrics

@@ -30,10 +30,10 @@ import (
 )
 
 const (
-	metricsPortName       = "node-metrics"
-	metricsPort           = 9110
+	metricsPortName       = "metrics"
+	metricsPort           = 8000
 	metricsServiceAccount = "awslabs-gpu-operator-node-metrics"
-	metricsImage          = ""
+	metricsImage          = "public.ecr.aws/neuron/neuron-monitor:1.3.0"
 )
 
 //go:generate mockgen -source=nodemetrics.go -package=nodemetrics -destination=mock_nodemetrics.go NodeMetrics
@@ -60,10 +60,10 @@ func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *
 	ports := getPorts()
 
 	matchLabels := map[string]string{
-		"app.kubernetes.io/component": "awslabs-gpu",
-		"app.kubernetes.io/name":      "awslabs-gpu",
-		"app.kubernetes.io/part-of":   "awslabs-gpu",
-		"app.kubernetes.io/role":      "awslabs-gpu-metrics",
+		"app.kubernetes.io/component": "aws-neuron",
+		"app.kubernetes.io/name":      "aws-neuron",
+		"app.kubernetes.io/part-of":   "aws-neuron",
+		"app.kubernetes.io/role":      "aws-neuron-gpu-metrics",
 	}
 	nodeSelector := map[string]string{labels.GetKernelModuleReadyNodeLabel(devConfig.Namespace, devConfig.Name): ""}
 	ds.Spec = appsv1.DaemonSetSpec{
@@ -75,8 +75,36 @@ func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *
 			Spec: v1.PodSpec{
 				Containers: []v1.Container{
 					{
-						Name:            "node-metrics-container",
-						Image:           metricsImage,
+						Name:  "node-metrics-container",
+						Image: metricsImage,
+						/*
+							Args: []string{
+								"--port",
+								"8000",
+								"--neuron-monitor-config",
+								"/opt/aws/neuron/bin/neuron-monitor.conf",
+							},
+						*/
+						Command: []string{
+							"/bin/bash",
+							"-c",
+						},
+						Args: []string{`
+							trap "kill -TERM 0; exit 0" TERM INT; \
+							/opt/bin/entrypoint.sh \
+							--port 8000 \
+							--neuron-monitor-config /opt/aws/neuron/bin/neuron-monitor.conf & \
+							wait`,
+						},
+						/*
+							Command:         []string{
+								"/bin/bash",
+								"-c",
+								"|",
+
+								"/opt/bin/entrypoint.sh"
+							},
+						*/
 						ImagePullPolicy: v1.PullAlways,
 						SecurityContext: &v1.SecurityContext{
 							Privileged: ptr.To[bool](true),
@@ -106,6 +134,12 @@ func getVolumesAndMount() ([]v1.Volume, []v1.VolumeMount) {
 			Name:      "sys-volume",
 			MountPath: "/host/sys",
 		},
+		{
+			Name:      "config-volume",
+			MountPath: "/opt/aws/neuron/bin/neuron-monitor.conf",
+			SubPath:   "neuron-monitor.conf",
+			ReadOnly:  true,
+		},
 	}
 
 	hostPathDirectory := v1.HostPathDirectory
@@ -125,6 +159,16 @@ func getVolumesAndMount() ([]v1.Volume, []v1.VolumeMount) {
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/sys",
 					Type: &hostPathDirectory,
+				},
+			},
+		},
+		{
+			Name: "config-volume",
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: "awslabs-gpu-operator-node-metrics-configmap",
+					},
 				},
 			},
 		},
