@@ -25,6 +25,7 @@ import (
 	kmmlabels "github.com/rh-ecosystem-edge/kernel-module-management/pkg/labels"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type nodeUpgradeState string
@@ -81,6 +82,10 @@ func (ui *upgradeImpl) UncordonUpgradedNode(ctx context.Context, node *v1.Node) 
 	if node == nil {
 		return nil
 	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("start uncordon for node", "node name", node.Name)
+
 	upgradeTaint := v1.Taint{
 		Key:    constants.UpgradeTaintTolerationKey,
 		Value:  "true",
@@ -121,6 +126,10 @@ func (ui *upgradeImpl) CordonNodeForUpgrade(ctx context.Context, devConfig *awsl
 	if node == nil {
 		return nil
 	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("start cordon for node", "node name", node.Name)
+
 	if isNewNodeForUpgrade(node, devConfig) {
 		// no need to cordone if driver was not loaded previously and no workloads are running
 		return nil
@@ -146,6 +155,10 @@ func (ui *upgradeImpl) KickoffUpgrade(ctx context.Context, devConfig *awslabsv1a
 	if node == nil {
 		return nil
 	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("start kickoff for node", "node name", node.Name)
+
 	nodeLabels := node.GetLabels()
 	if nodeLabels == nil {
 		nodeLabels = make(map[string]string)
