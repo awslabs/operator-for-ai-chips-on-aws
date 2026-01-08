@@ -50,6 +50,10 @@ type DeviceConfigSpec struct {
 	// +kubebuilder:validation:Required
 	SchedulerExtensionImage string `json:"schedulerExtensionImage,omitempty"`
 
+	// node metrics image
+	// +kubebuilder:validation:Required
+	NodeMetricsImage string `json:"nodeMetricsImage,omitempty"`
+
 	// pull secrets used for pull/setting images used by operator
 	// +optional
 	ImageRepoSecret *v1.LocalObjectReference `json:"imageRepoSecret,omitempty"`

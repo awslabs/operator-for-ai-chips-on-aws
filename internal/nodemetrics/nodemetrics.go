@@ -33,7 +33,6 @@ const (
 	metricsPortName       = "metrics"
 	metricsPort           = 8000
 	metricsServiceAccount = "awslabs-gpu-operator-node-metrics"
-	metricsImage          = "public.ecr.aws/neuron/neuron-monitor:1.3.0"
 )
 
 //go:generate mockgen -source=nodemetrics.go -package=nodemetrics -destination=mock_nodemetrics.go NodeMetrics
@@ -76,15 +75,7 @@ func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *
 				Containers: []v1.Container{
 					{
 						Name:  "node-metrics-container",
-						Image: metricsImage,
-						/*
-							Args: []string{
-								"--port",
-								"8000",
-								"--neuron-monitor-config",
-								"/opt/aws/neuron/bin/neuron-monitor.conf",
-							},
-						*/
+						Image: devConfig.Spec.NodeMetricsImage,
 						Command: []string{
 							"/bin/bash",
 							"-c",
@@ -96,15 +87,6 @@ func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *
 							--neuron-monitor-config /opt/aws/neuron/bin/neuron-monitor.conf & \
 							wait`,
 						},
-						/*
-							Command:         []string{
-								"/bin/bash",
-								"-c",
-								"|",
-
-								"/opt/bin/entrypoint.sh"
-							},
-						*/
 						ImagePullPolicy: v1.PullAlways,
 						SecurityContext: &v1.SecurityContext{
 							Privileged: ptr.To[bool](true),
