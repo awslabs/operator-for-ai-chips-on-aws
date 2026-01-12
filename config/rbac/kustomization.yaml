@@ -15,6 +15,7 @@ resources:
 - kmm_device_plugin_service_account.yaml
 - kmm_device_plugin_cluster_role.yaml
 - kmm_device_plugin_role_binding.yaml
+- kmm_device_plugin_clusterrole_binding.yaml
 - custom_scheduler_service_account.yaml
 - custom_scheduler_cluster_role.yaml
 - custom_scheduler_kube_scheduler_role_binding.yaml

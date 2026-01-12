@@ -11,3 +11,13 @@ rules:
   - securitycontextconstraints
   verbs:
   - use
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+  - update
