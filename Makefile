@@ -6,7 +6,7 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 
 # IMAGE_TAG_BASE defines the docker.io namespace and part of the image name for remote images.
 # This variable is used to construct full image tags for bundle and catalog images.
-IMAGE_TAG_BASE ?= public.ecr.aws/q5p6u7h8/neuron-openshift/operator
+IMAGE_TAG_BASE ?= public.ecr.aws/os-partners/neuron-openshift/operator
 
 # TEST_IMAGE_TAG_BASE defines the private ECR registry for test images
 TEST_IMAGE_TAG_BASE ?= 582767206473.dkr.ecr.us-east-1.amazonaws.com/neuron-openshift
@@ -20,7 +20,7 @@ TEST_MODE := true
 REGISTRY_BASE := $(TEST_IMAGE_TAG_BASE)
 else
 TEST_MODE := false
-REGISTRY_BASE := public.ecr.aws/q5p6u7h8/neuron-openshift
+REGISTRY_BASE := public.ecr.aws/os-partners/neuron-openshift
 endif
 
 # Image URL to use all building/pushing image targets
