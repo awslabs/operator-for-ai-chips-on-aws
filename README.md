@@ -9,6 +9,14 @@ The AWS Neuron GPU Operator automates enabling AWS Neuron devices on OpenShift c
 
 It reconciles a custom resource `DeviceConfig` to configure images and targeting of nodes.
 
+### Supported Platforms
+
+This operator is supported on:
+- **Red Hat OpenShift Container Platform (OCP)** 4.20.10 and above
+- **Red Hat OpenShift Service on AWS (ROSA)** 4.20.10 and above
+
+Both self-managed OpenShift and ROSA deployments are fully supported.
+
 ### Prerequisites
 
 - OpenShift 4.19 or newer
