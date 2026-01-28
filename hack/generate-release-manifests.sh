@@ -2,7 +2,7 @@
 set -e
 
 VERSION=${1:-"latest"}
-IMG=${2:-"public.ecr.aws/q5p6u7h8/neuron-openshift/operator:v${VERSION}"}
+IMG=${2:-"public.ecr.aws/os-partners/neuron-openshift/operator:v${VERSION}"}
 TEST_MODE=${3:-""}
 
 echo "Generating manifests for version: $VERSION"
@@ -16,7 +16,7 @@ if [[ "$TEST_MODE" == "--test-mode" ]] || [[ "$IMG" == *"582767206473.dkr.ecr.us
 else
     echo "Running in production mode - using public registry"
     IS_TEST_MODE=false
-    REGISTRY_BASE="public.ecr.aws/q5p6u7h8/neuron-openshift"
+    REGISTRY_BASE="public.ecr.aws/os-partners/neuron-openshift"
 fi
 
 # Generate manifests
@@ -80,9 +80,10 @@ metadata:
   namespace: ai-operator-on-aws
 spec:
   driversImage: ${REGISTRY_BASE}/neuron-kernel-module:${VERSION}  # actual pull at runtime will use <image>-\$KERNEL_VERSION
-  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.24.23.0
+  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
-  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.24.23.0
+  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
+  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:1.3.0
   imageRepoSecret:
     name: ecr-secret
   selector:
@@ -97,10 +98,11 @@ metadata:
   name: neuron
   namespace: ai-operator-on-aws
 spec:
-  driversImage: public.ecr.aws/q5p6u7h8/neuron-openshift/neuron-kernel-module:2.24.7.0  # actual pull at runtime will use <image>-\$KERNEL_VERSION
-  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.24.23.0
+  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-\$KERNEL_VERSION
+  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
-  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.24.23.0
+  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
+  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:1.3.0
   imageRepoSecret:
     name: ecr-secret
   selector:

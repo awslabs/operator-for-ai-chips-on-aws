@@ -29,7 +29,7 @@ When the PR is merged to main, the release workflow will automatically:
 
 ### 3. Release Artifacts
 The release will include:
-- **Container Images**: Pushed to `public.ecr.aws/q5p6u7h8/neuron-openshift/`
+- **Container Images**: Pushed to `public.ecr.aws/os-partners/neuron-openshift/`
 - **Manifests**: `aws-neuron-operator.yaml`, `nfd-rule.yaml`, `deviceconfig-sample.yaml`
 - **Git Tag**: `v{VERSION}` (e.g., `v1.2.3`)
 

@@ -9,6 +9,14 @@ The AWS Neuron GPU Operator automates enabling AWS Neuron devices on OpenShift c
 
 It reconciles a custom resource `DeviceConfig` to configure images and targeting of nodes.
 
+### Supported Platforms
+
+This operator is supported on:
+- **Red Hat OpenShift Container Platform (OCP)** 4.20.10 and above
+- **Red Hat OpenShift Service on AWS (ROSA)** 4.20.10 and above
+
+Both self-managed OpenShift and ROSA deployments are fully supported.
+
 ### Prerequisites
 
 - OpenShift 4.19 or newer
@@ -204,10 +212,10 @@ metadata:
   name: neuron
   namespace: ai-operator-on-aws
 spec:
-  driversImage: ghcr.io/awslabs/kmod-with-kmm-for-ai-chips-on-aws/neuron-driver:2.22.2.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
-  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.23.30.0
-  customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.28.5-eks-1-28-latest
-  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.23.30.0
+  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
+  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
+  customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
+  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
   imageRepoSecret:
     name: image-repo-secret
   selector:
