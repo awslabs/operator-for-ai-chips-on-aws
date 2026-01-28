@@ -4,10 +4,10 @@ metadata:
   name: neuron
   namespace: ai-operator-on-aws
 spec:
-  driversImage: public.ecr.aws/q5p6u7h8/neuron-openshift/neuron-kernel-module:2.24.7.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
-  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.24.23.0
+  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
+  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
-  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.24.23.0
+  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
   imageRepoSecret:
     name: ecr-secret
   selector:

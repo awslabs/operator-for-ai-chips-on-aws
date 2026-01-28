@@ -169,11 +169,11 @@ jobs:
           ### Container Images
           
           **Direct Installation:**
-          - Operator: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator:v${{ inputs.version }}`
+          - Operator: `public.ecr.aws/os-partners/neuron-openshift/operator:v${{ inputs.version }}`
           
           **OLM Installation:**
-          - Bundle: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-bundle:v${{ inputs.version }}`
-          - Index: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-index:v${{ inputs.version }}`
+          - Bundle: `public.ecr.aws/os-partners/neuron-openshift/operator-bundle:v${{ inputs.version }}`
+          - Index: `public.ecr.aws/os-partners/neuron-openshift/operator-index:v${{ inputs.version }}`
           
           ### OLM Install Steps
           ```bash
