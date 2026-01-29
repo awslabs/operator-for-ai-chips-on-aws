@@ -11,7 +11,7 @@ package customscheduler
 import (
 	reflect "reflect"
 
-	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	v1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
 	v1 "k8s.io/api/apps/v1"
 )
@@ -40,7 +40,7 @@ func (m *MockCustomScheduler) EXPECT() *MockCustomSchedulerMockRecorder {
 }
 
 // SetCustomSchedulerAsDesired mocks base method.
-func (m *MockCustomScheduler) SetCustomSchedulerAsDesired(dp *v1.Deployment, devConfig *v1alpha1.DeviceConfig) {
+func (m *MockCustomScheduler) SetCustomSchedulerAsDesired(dp *v1.Deployment, devConfig *v1beta1.DeviceConfig) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetCustomSchedulerAsDesired", dp, devConfig)
 }
@@ -52,7 +52,7 @@ func (mr *MockCustomSchedulerMockRecorder) SetCustomSchedulerAsDesired(dp, devCo
 }
 
 // SetCustomSchedulerExtensionAsDesired mocks base method.
-func (m *MockCustomScheduler) SetCustomSchedulerExtensionAsDesired(dp *v1.Deployment, devConfig *v1alpha1.DeviceConfig) {
+func (m *MockCustomScheduler) SetCustomSchedulerExtensionAsDesired(dp *v1.Deployment, devConfig *v1beta1.DeviceConfig) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetCustomSchedulerExtensionAsDesired", dp, devConfig)
 }

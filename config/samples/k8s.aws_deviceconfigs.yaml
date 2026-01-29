@@ -1,4 +1,4 @@
-apiVersion: k8s.aws/v1alpha1
+apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: device-config
