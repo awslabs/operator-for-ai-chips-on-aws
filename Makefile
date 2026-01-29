@@ -142,7 +142,7 @@ manager: $(shell find . -name "*.go") go.mod go.sum  ## Build manager binary.
 
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	docker buildx build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --push .
+	docker buildx build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --build-arg VERSION=$(PROJECT_VERSION) --push .
 
 ##@ Deployment
 
@@ -262,7 +262,7 @@ index: opm
 test-docker-build: ## Build docker image for test pipeline with private registry.
 	$(eval IMAGE_TAG_BASE := $(TEST_IMAGE_TAG_BASE))
 	$(eval IMG := $(TEST_IMAGE_TAG_BASE)/operator:$(IMAGE_TAG))
-	docker buildx build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --push .
+	docker buildx build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --build-arg VERSION=$(PROJECT_VERSION) --push .
 
 .PHONY: test-bundle
 test-bundle: operator-sdk manifests kustomize ## Generate test bundle for private registry.

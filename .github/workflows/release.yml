@@ -252,11 +252,11 @@ jobs:
           ### Container Images
           
           **Direct Installation:**
-          - Operator: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator:v${{ env.NEW_VERSION }}`
+          - Operator: `public.ecr.aws/os-partners/neuron-openshift/operator:v${{ env.NEW_VERSION }}`
           
           **OLM Installation:**
-          - Bundle: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-bundle:v${{ env.NEW_VERSION }}`
-          - Index: `public.ecr.aws/q5p6u7h8/neuron-openshift/operator-index:v${{ env.NEW_VERSION }}`
+          - Bundle: `public.ecr.aws/os-partners/neuron-openshift/operator-bundle:v${{ env.NEW_VERSION }}`
+          - Index: `public.ecr.aws/os-partners/neuron-openshift/operator-index:v${{ env.NEW_VERSION }}`
           
           ### Installation Methods
           
@@ -293,7 +293,7 @@ jobs:
             namespace: openshift-marketplace
           spec:
             sourceType: grpc
-            image: public.ecr.aws/q5p6u7h8/neuron-openshift/operator-index:v${{ env.NEW_VERSION }}
+            image: public.ecr.aws/os-partners/neuron-openshift/operator-index:v${{ env.NEW_VERSION }}
             displayName: AWS Neuron Operator Catalog
           EOF
           
