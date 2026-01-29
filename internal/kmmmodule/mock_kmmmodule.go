@@ -11,8 +11,8 @@ package kmmmodule
 import (
 	reflect "reflect"
 
-	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
-	v1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
+	v1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
+	v1beta10 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,7 +40,7 @@ func (m *MockKMMModuleAPI) EXPECT() *MockKMMModuleAPIMockRecorder {
 }
 
 // SetKMMModuleAsDesired mocks base method.
-func (m *MockKMMModuleAPI) SetKMMModuleAsDesired(mod *v1beta1.Module, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockKMMModuleAPI) SetKMMModuleAsDesired(mod *v1beta10.Module, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetKMMModuleAsDesired", mod, devConfig)
 	ret0, _ := ret[0].(error)

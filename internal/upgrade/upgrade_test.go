@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	mock_client "github.com/awslabs/operator-for-ai-chips-on-aws/internal/client"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	. "github.com/onsi/ginkgo/v2"
@@ -62,7 +62,7 @@ var _ = Describe("GetTargetedNodes", func() {
 		mockClient *mock_client.MockClient
 		upgradeAPI UpgradeAPI
 		ctx        context.Context
-		devConfig  *awslabsv1alpha1.DeviceConfig
+		devConfig  *awslabsv1beta1.DeviceConfig
 	)
 
 	BeforeEach(func() {
@@ -70,12 +70,12 @@ var _ = Describe("GetTargetedNodes", func() {
 		mockClient = mock_client.NewMockClient(ctrl)
 		upgradeAPI = NewUpgradeAPI(mockClient)
 		ctx = context.Background()
-		devConfig = &awslabsv1alpha1.DeviceConfig{
+		devConfig = &awslabsv1beta1.DeviceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-device-config",
 				Namespace: "test-namespace",
 			},
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				Selector: map[string]string{
 					"key1": "value1",
 					"key2": "value2",
@@ -156,18 +156,18 @@ var _ = Describe("GetUpgradedNode", func() {
 	var (
 		upgradeAPI UpgradeAPI
 		ctx        context.Context
-		devConfig  *awslabsv1alpha1.DeviceConfig
+		devConfig  *awslabsv1beta1.DeviceConfig
 	)
 
 	BeforeEach(func() {
 		upgradeAPI = NewUpgradeAPI(nil)
 		ctx = context.Background()
-		devConfig = &awslabsv1alpha1.DeviceConfig{
+		devConfig = &awslabsv1beta1.DeviceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-device-config",
 				Namespace: "test-namespace",
 			},
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriverVersion: "v1.0.0",
 			},
 		}
@@ -355,18 +355,18 @@ var _ = Describe("GetNodeForUpgrade", func() {
 	var (
 		upgradeAPI UpgradeAPI
 		ctx        context.Context
-		devConfig  *awslabsv1alpha1.DeviceConfig
+		devConfig  *awslabsv1beta1.DeviceConfig
 	)
 
 	BeforeEach(func() {
 		upgradeAPI = NewUpgradeAPI(nil)
 		ctx = context.Background()
-		devConfig = &awslabsv1alpha1.DeviceConfig{
+		devConfig = &awslabsv1beta1.DeviceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-device-config",
 				Namespace: "test-namespace",
 			},
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriverVersion: "v1.0.0",
 			},
 		}
@@ -468,7 +468,7 @@ var _ = Describe("CordonNodeForUpgrade", func() {
 		upgradeAPI UpgradeAPI
 		ctx        context.Context
 		node       *v1.Node
-		devConfig  *awslabsv1alpha1.DeviceConfig
+		devConfig  *awslabsv1beta1.DeviceConfig
 	)
 
 	BeforeEach(func() {
@@ -485,12 +485,12 @@ var _ = Describe("CordonNodeForUpgrade", func() {
 				Taints: []v1.Taint{},
 			},
 		}
-		devConfig = &awslabsv1alpha1.DeviceConfig{
+		devConfig = &awslabsv1beta1.DeviceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-device-config",
 				Namespace: "test-namespace",
 			},
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriverVersion: "v1.0.0",
 			},
 		}
@@ -591,7 +591,7 @@ var _ = Describe("KickoffUpgrade", func() {
 		mockClient *mock_client.MockClient
 		upgradeAPI UpgradeAPI
 		ctx        context.Context
-		devConfig  *awslabsv1alpha1.DeviceConfig
+		devConfig  *awslabsv1beta1.DeviceConfig
 		node       *v1.Node
 	)
 
@@ -600,12 +600,12 @@ var _ = Describe("KickoffUpgrade", func() {
 		mockClient = mock_client.NewMockClient(ctrl)
 		upgradeAPI = NewUpgradeAPI(mockClient)
 		ctx = context.Background()
-		devConfig = &awslabsv1alpha1.DeviceConfig{
+		devConfig = &awslabsv1beta1.DeviceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-device-config",
 				Namespace: "test-namespace",
 			},
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriverVersion: "v1.0.0",
 			},
 		}
@@ -690,16 +690,16 @@ var _ = Describe("KickoffUpgrade", func() {
 
 var _ = Describe("getNodeUpgradeState", func() {
 	var (
-		devConfig *awslabsv1alpha1.DeviceConfig
+		devConfig *awslabsv1beta1.DeviceConfig
 	)
 
 	BeforeEach(func() {
-		devConfig = &awslabsv1alpha1.DeviceConfig{
+		devConfig = &awslabsv1beta1.DeviceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-device-config",
 				Namespace: "test-namespace",
 			},
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriverVersion: "v1.0.0",
 			},
 		}

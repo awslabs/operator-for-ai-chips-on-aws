@@ -25,7 +25,7 @@ It reconciles a custom resource `DeviceConfig` to configure images and targeting
 
 ### Repository layout essentials
 
-- CRD: `config/crd/bases/k8s.aws_deviceconfigs.yaml` defines `k8s.aws/v1alpha1`, `DeviceConfig`
+- CRD: `config/crd/bases/k8s.aws_deviceconfigs.yaml` defines `k8s.aws/v1beta1`, `DeviceConfig`
 - Controller: `internal/controllers/device_config_reconciler.go`
 - KMM integration: `internal/kmmmodule/kmmmodule.go` (module name `neuron`)
 - Custom scheduler: `internal/customscheduler/customscheduler.go`
@@ -118,7 +118,7 @@ metadata:
 Create a CatalogSource in `openshift-marketplace` referencing your index image, then create a Subscription in your target namespace.
 
 ```yaml
-apiVersion: operators.coreos.com/v1alpha1
+apiVersion: operators.coreos.com/v1beta1
 kind: CatalogSource
 metadata:
   name: aws-neuron-operator
@@ -132,7 +132,7 @@ spec:
 Create the Subscription.
 
 ```yaml
-apiVersion: operators.coreos.com/v1alpha1
+apiVersion: operators.coreos.com/v1beta1
 kind: Subscription
 metadata:
   name: aws-neuron-operator-sub
@@ -198,7 +198,7 @@ Optional fields:
 Example:
 
 ```yaml
-apiVersion: k8s.aws/v1alpha1
+apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: neuron

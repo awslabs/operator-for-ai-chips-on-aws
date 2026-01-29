@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
@@ -71,7 +71,7 @@ func NewDeviceConfigReconciler(
 // SetupWithManager sets up the controller with the Manager.
 func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&awslabsv1alpha1.DeviceConfig{}).
+		For(&awslabsv1beta1.DeviceConfig{}).
 		Owns(&kmmv1beta1.Module{}).
 		Owns(&appsv1.DaemonSet{}).
 		Owns(&appsv1.Deployment{}).
@@ -82,7 +82,7 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Named(DeviceConfigReconcilerName).
 		Complete(
-			reconcile.AsReconciler[*awslabsv1alpha1.DeviceConfig](mgr.GetClient(), r),
+			reconcile.AsReconciler[*awslabsv1beta1.DeviceConfig](mgr.GetClient(), r),
 		)
 }
 
@@ -95,7 +95,7 @@ func (r *DeviceConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=create;delete;get;list;patch;watch
 //+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;patch;watch
 
-func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) (ctrl.Result, error) {
+func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) (ctrl.Result, error) {
 	res := ctrl.Result{}
 
 	logger := log.FromContext(ctx).WithValues("namespace", devConfig.Namespace, "name", devConfig.Name)
@@ -142,12 +142,12 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 
 //go:generate mockgen -source=device_config_reconciler.go -package=controllers -destination=mock_device_config_reconciler.go deviceConfigReconcilerHelperAPI
 type deviceConfigReconcilerHelperAPI interface {
-	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	handleCustomScheduler(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
-	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
+	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	setFinalizer(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	handleKMMModule(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	handleCustomScheduler(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 }
 
 type deviceConfigReconcilerHelper struct {
@@ -175,7 +175,7 @@ func newDeviceConfigReconcilerHelper(client client.Client,
 	}
 }
 
-func (dcrh *deviceConfigReconcilerHelper) setFinalizer(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (dcrh *deviceConfigReconcilerHelper) setFinalizer(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	if controllerutil.ContainsFinalizer(devConfig, deviceConfigFinalizer) {
 		return nil
 	}
@@ -185,7 +185,7 @@ func (dcrh *deviceConfigReconcilerHelper) setFinalizer(ctx context.Context, devC
 	return dcrh.client.Patch(ctx, devConfig, client.MergeFrom(devConfigCopy))
 }
 
-func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	logger := log.FromContext(ctx)
 
 	nmDS := appsv1.DaemonSet{}
@@ -230,7 +230,7 @@ func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Conte
 	return dcrh.client.Patch(ctx, devConfig, client.MergeFrom(devConfigCopy))
 }
 
-func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	kmmMod := &kmmv1beta1.Module{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: devConfig.Namespace,
@@ -250,7 +250,7 @@ func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, d
 
 }
 
-func (dcrh *deviceConfigReconcilerHelper) handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (dcrh *deviceConfigReconcilerHelper) handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	// check if rolling upgrade should be supported
 	if devConfig.Spec.DriverVersion == "" {
 		return nil
@@ -280,7 +280,7 @@ func (dcrh *deviceConfigReconcilerHelper) handleModuleVersionUpgrade(ctx context
 	return dcrh.upgradeHandler.KickoffUpgrade(ctx, devConfig, node)
 }
 
-func (dcrh *deviceConfigReconcilerHelper) handleCustomScheduler(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (dcrh *deviceConfigReconcilerHelper) handleCustomScheduler(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	csDep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-custom-scheduler"},
 	}
@@ -310,7 +310,7 @@ func (dcrh *deviceConfigReconcilerHelper) handleCustomScheduler(ctx context.Cont
 	return err
 }
 
-func (dcrh *deviceConfigReconcilerHelper) handleNodeMetrics(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (dcrh *deviceConfigReconcilerHelper) handleNodeMetrics(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-node-metrics"},
 	}

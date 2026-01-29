@@ -73,7 +73,7 @@ fi
 if [[ "$IS_TEST_MODE" == "true" ]]; then
     # Test mode - use private registry images
     cat > release/$VERSION/deviceconfig-sample.yaml << EOF
-apiVersion: k8s.aws/v1alpha1
+apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: neuron-test
@@ -91,7 +91,7 @@ EOF
 else
     # Production mode - use public registry images
     cat > release/$VERSION/deviceconfig-sample.yaml << EOF
-apiVersion: k8s.aws/v1alpha1
+apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: neuron

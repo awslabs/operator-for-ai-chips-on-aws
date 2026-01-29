@@ -12,7 +12,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	v1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 )
@@ -41,7 +41,7 @@ func (m *MockUpgradeAPI) EXPECT() *MockUpgradeAPIMockRecorder {
 }
 
 // CordonNodeForUpgrade mocks base method.
-func (m *MockUpgradeAPI) CordonNodeForUpgrade(ctx context.Context, devConfig *v1alpha1.DeviceConfig, node *v1.Node) error {
+func (m *MockUpgradeAPI) CordonNodeForUpgrade(ctx context.Context, devConfig *v1beta1.DeviceConfig, node *v1.Node) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CordonNodeForUpgrade", ctx, devConfig, node)
 	ret0, _ := ret[0].(error)
@@ -55,7 +55,7 @@ func (mr *MockUpgradeAPIMockRecorder) CordonNodeForUpgrade(ctx, devConfig, node 
 }
 
 // GetNodeForUpgrade mocks base method.
-func (m *MockUpgradeAPI) GetNodeForUpgrade(ctx context.Context, devConfig *v1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node {
+func (m *MockUpgradeAPI) GetNodeForUpgrade(ctx context.Context, devConfig *v1beta1.DeviceConfig, nodes []v1.Node) *v1.Node {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNodeForUpgrade", ctx, devConfig, nodes)
 	ret0, _ := ret[0].(*v1.Node)
@@ -69,7 +69,7 @@ func (mr *MockUpgradeAPIMockRecorder) GetNodeForUpgrade(ctx, devConfig, nodes an
 }
 
 // GetTargetedNodes mocks base method.
-func (m *MockUpgradeAPI) GetTargetedNodes(ctx context.Context, devConfig *v1alpha1.DeviceConfig) ([]v1.Node, error) {
+func (m *MockUpgradeAPI) GetTargetedNodes(ctx context.Context, devConfig *v1beta1.DeviceConfig) ([]v1.Node, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTargetedNodes", ctx, devConfig)
 	ret0, _ := ret[0].([]v1.Node)
@@ -84,7 +84,7 @@ func (mr *MockUpgradeAPIMockRecorder) GetTargetedNodes(ctx, devConfig any) *gomo
 }
 
 // GetUpgradedNode mocks base method.
-func (m *MockUpgradeAPI) GetUpgradedNode(ctx context.Context, devConfig *v1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node {
+func (m *MockUpgradeAPI) GetUpgradedNode(ctx context.Context, devConfig *v1beta1.DeviceConfig, nodes []v1.Node) *v1.Node {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUpgradedNode", ctx, devConfig, nodes)
 	ret0, _ := ret[0].(*v1.Node)
@@ -98,7 +98,7 @@ func (mr *MockUpgradeAPIMockRecorder) GetUpgradedNode(ctx, devConfig, nodes any)
 }
 
 // KickoffUpgrade mocks base method.
-func (m *MockUpgradeAPI) KickoffUpgrade(ctx context.Context, devConfig *v1alpha1.DeviceConfig, node *v1.Node) error {
+func (m *MockUpgradeAPI) KickoffUpgrade(ctx context.Context, devConfig *v1beta1.DeviceConfig, node *v1.Node) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "KickoffUpgrade", ctx, devConfig, node)
 	ret0, _ := ret[0].(error)
@@ -112,7 +112,7 @@ func (mr *MockUpgradeAPIMockRecorder) KickoffUpgrade(ctx, devConfig, node any) *
 }
 
 // RemoveUpgradeLabels mocks base method.
-func (m *MockUpgradeAPI) RemoveUpgradeLabels(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockUpgradeAPI) RemoveUpgradeLabels(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RemoveUpgradeLabels", ctx, devConfig)
 	ret0, _ := ret[0].(error)

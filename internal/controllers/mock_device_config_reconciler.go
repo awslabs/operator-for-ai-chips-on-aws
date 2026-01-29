@@ -12,7 +12,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	v1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,7 +40,7 @@ func (m *MockdeviceConfigReconcilerHelperAPI) EXPECT() *MockdeviceConfigReconcil
 }
 
 // finalizeDeviceConfig mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) finalizeDeviceConfig(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockdeviceConfigReconcilerHelperAPI) finalizeDeviceConfig(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "finalizeDeviceConfig", ctx, devConfig)
 	ret0, _ := ret[0].(error)
@@ -54,7 +54,7 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) finalizeDeviceConfig(
 }
 
 // handleCustomScheduler mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) handleCustomScheduler(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockdeviceConfigReconcilerHelperAPI) handleCustomScheduler(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "handleCustomScheduler", ctx, devConfig)
 	ret0, _ := ret[0].(error)
@@ -68,7 +68,7 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleCustomScheduler
 }
 
 // handleKMMModule mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) handleKMMModule(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockdeviceConfigReconcilerHelperAPI) handleKMMModule(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "handleKMMModule", ctx, devConfig)
 	ret0, _ := ret[0].(error)
@@ -82,7 +82,7 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleKMMModule(ctx, 
 }
 
 // handleModuleVersionUpgrade mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) handleModuleVersionUpgrade(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockdeviceConfigReconcilerHelperAPI) handleModuleVersionUpgrade(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "handleModuleVersionUpgrade", ctx, devConfig)
 	ret0, _ := ret[0].(error)
@@ -96,7 +96,7 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleModuleVersionUp
 }
 
 // handleNodeMetrics mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) handleNodeMetrics(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockdeviceConfigReconcilerHelperAPI) handleNodeMetrics(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "handleNodeMetrics", ctx, devConfig)
 	ret0, _ := ret[0].(error)
@@ -110,7 +110,7 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleNodeMetrics(ctx
 }
 
 // setFinalizer mocks base method.
-func (m *MockdeviceConfigReconcilerHelperAPI) setFinalizer(ctx context.Context, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockdeviceConfigReconcilerHelperAPI) setFinalizer(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "setFinalizer", ctx, devConfig)
 	ret0, _ := ret[0].(error)

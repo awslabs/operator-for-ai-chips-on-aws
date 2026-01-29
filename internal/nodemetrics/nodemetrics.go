@@ -19,7 +19,7 @@ package nodemetrics
 import (
 	"fmt"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/rh-ecosystem-edge/kernel-module-management/pkg/labels"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -37,7 +37,7 @@ const (
 
 //go:generate mockgen -source=nodemetrics.go -package=nodemetrics -destination=mock_nodemetrics.go NodeMetrics
 type NodeMetrics interface {
-	SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *awslabsv1alpha1.DeviceConfig) error
+	SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *awslabsv1beta1.DeviceConfig) error
 }
 
 type nodeMetrics struct {
@@ -50,7 +50,7 @@ func NewNodeMetrcis(scheme *runtime.Scheme) NodeMetrics {
 	}
 }
 
-func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (nm *nodeMetrics) SetNodeMetricsAsDesired(ds *appsv1.DaemonSet, devConfig *awslabsv1beta1.DeviceConfig) error {
 	if ds == nil {
 		return fmt.Errorf("daemon set is not initialized, zero pointer")
 	}

@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 )
 
 type Filter struct {
@@ -48,7 +48,7 @@ func (f *Filter) FindDeviceConfigForNodeChange(ctx context.Context, node client.
 
 	logger.Info("Listing all device configs")
 
-	deviceConfigs := awslabsv1alpha1.DeviceConfigList{}
+	deviceConfigs := awslabsv1beta1.DeviceConfigList{}
 
 	err := f.client.List(ctx, &deviceConfigs)
 	if err != nil {

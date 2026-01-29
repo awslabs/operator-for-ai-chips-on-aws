@@ -30,7 +30,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	dcv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	dcv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/cmd"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/config"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/controllers"
@@ -51,7 +51,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(dcv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(dcv1beta1.AddToScheme(scheme))
 	utilruntime.Must(kmmv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }

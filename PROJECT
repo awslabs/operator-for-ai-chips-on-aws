@@ -16,6 +16,6 @@ resources:
     namespaced: true
   domain: k8s.aws
   kind: DeviceConfig
-  path: github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1
-  version: v1alpha1
+  path: github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1
+  version: v1beta1
 version: "3"

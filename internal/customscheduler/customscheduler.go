@@ -17,7 +17,7 @@ limitations under the License.
 package customscheduler
 
 import (
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -29,8 +29,8 @@ import (
 
 //go:generate mockgen -source=customscheduler.go -package=customscheduler -destination=mock_customscheduler.go CustomScheduler
 type CustomScheduler interface {
-	SetCustomSchedulerAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1alpha1.DeviceConfig)
-	SetCustomSchedulerExtensionAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1alpha1.DeviceConfig)
+	SetCustomSchedulerAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1beta1.DeviceConfig)
+	SetCustomSchedulerExtensionAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1beta1.DeviceConfig)
 }
 
 type customScheduler struct {
@@ -43,7 +43,7 @@ func NewCustomScheduler(scheme *runtime.Scheme) CustomScheduler {
 	}
 }
 
-func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1alpha1.DeviceConfig) {
+func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1beta1.DeviceConfig) {
 	containerVolumeMounts := []corev1.VolumeMount{
 		{
 			Name:      "config-volume",
@@ -125,7 +125,7 @@ func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, de
 	}
 }
 
-func (cs *customScheduler) SetCustomSchedulerExtensionAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1alpha1.DeviceConfig) {
+func (cs *customScheduler) SetCustomSchedulerExtensionAsDesired(dp *appsv1.Deployment, devConfig *awslabsv1beta1.DeviceConfig) {
 	matchLabels := map[string]string{
 		"app.kubernetes.io/name":      "aws-neuron",
 		"app.kubernetes.io/instance":  "neuron-scheduler-extension",
