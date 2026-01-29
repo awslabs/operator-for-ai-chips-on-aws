@@ -14,7 +14,7 @@ spec:
       displayName: DeviceConfig
       kind: DeviceConfig
       name: deviceconfigs.k8s.aws
-      version: v1alpha1
+      version: v1beta1
   description: Operator responsible for deploying NEURON GPU kernel module, device
     plugin and custom scheduler/extension
   displayName: operator-for-ai-chips-on-aws

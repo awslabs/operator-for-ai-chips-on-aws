@@ -19,7 +19,7 @@ package customscheduler
 import (
 	"os"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -41,8 +41,8 @@ var _ = Describe("SetCustomSchedulerAsDesired", func() {
 				APIVersion: "apps/v1",
 			},
 		}
-		devConfig := &awslabsv1alpha1.DeviceConfig{
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				CustomSchedulerImage: "test-scheduler-image:latest",
 			},
 		}
@@ -74,8 +74,8 @@ var _ = Describe("SetCustomSchedulerExtensionAsDesired", func() {
 				APIVersion: "apps/v1",
 			},
 		}
-		devConfig := &awslabsv1alpha1.DeviceConfig{
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				SchedulerExtensionImage: "test-extension-image:latest",
 			},
 		}

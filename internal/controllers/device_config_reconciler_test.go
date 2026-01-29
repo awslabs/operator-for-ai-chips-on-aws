@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	mock_client "github.com/awslabs/operator-for-ai-chips-on-aws/internal/client"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
@@ -67,7 +67,7 @@ var _ = Describe("Reconcile", func() {
 		handleModuleVersionUpgradeError,
 		handleCustomSchedulerError,
 		handleMetricsError bool) {
-		devConfig := &awslabsv1alpha1.DeviceConfig{}
+		devConfig := &awslabsv1beta1.DeviceConfig{}
 		if setFinalizerError {
 			mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(fmt.Errorf("some error"))
 			goto executeTestFunction
@@ -113,7 +113,7 @@ var _ = Describe("Reconcile", func() {
 	)
 
 	It("device config finalization", func() {
-		devConfig := &awslabsv1alpha1.DeviceConfig{}
+		devConfig := &awslabsv1beta1.DeviceConfig{}
 		devConfig.SetDeletionTimestamp(&metav1.Time{})
 
 		mockHelper.EXPECT().finalizeDeviceConfig(ctx, devConfig).Return(nil)
@@ -146,7 +146,7 @@ var _ = Describe("setFinalizer", func() {
 	ctx := context.Background()
 
 	It("good flow", func() {
-		devConfig := &awslabsv1alpha1.DeviceConfig{}
+		devConfig := &awslabsv1beta1.DeviceConfig{}
 
 		kubeClient.EXPECT().Patch(ctx, gomock.Any(), gomock.Any()).Return(nil)
 
@@ -158,7 +158,7 @@ var _ = Describe("setFinalizer", func() {
 	})
 
 	It("error flow", func() {
-		devConfig := &awslabsv1alpha1.DeviceConfig{}
+		devConfig := &awslabsv1beta1.DeviceConfig{}
 
 		kubeClient.EXPECT().Patch(ctx, gomock.Any(), gomock.Any()).Return(fmt.Errorf("some error"))
 
@@ -182,7 +182,7 @@ var _ = Describe("finalizeDeviceConfig", func() {
 	})
 
 	ctx := context.Background()
-	devConfig := &awslabsv1alpha1.DeviceConfig{
+	devConfig := &awslabsv1beta1.DeviceConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      devConfigName,
 			Namespace: devConfigNamespace,
@@ -244,7 +244,7 @@ var _ = Describe("handleKMMModule", func() {
 	})
 
 	ctx := context.Background()
-	devConfig := &awslabsv1alpha1.DeviceConfig{
+	devConfig := &awslabsv1beta1.DeviceConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      devConfigName,
 			Namespace: devConfigNamespace,
@@ -305,8 +305,8 @@ var _ = Describe("handleModuleVersionUpgrade", func() {
 	})
 
 	ctx := context.Background()
-	devConfig := &awslabsv1alpha1.DeviceConfig{
-		Spec: awslabsv1alpha1.DeviceConfigSpec{
+	devConfig := &awslabsv1beta1.DeviceConfig{
+		Spec: awslabsv1beta1.DeviceConfigSpec{
 			DriverVersion: "some verison",
 		},
 	}
@@ -361,7 +361,7 @@ var _ = Describe("handleModuleVersionUpgrade", func() {
 	)
 
 	It("driverVersion is not defined in the Spec", func() {
-		devConfig := &awslabsv1alpha1.DeviceConfig{}
+		devConfig := &awslabsv1beta1.DeviceConfig{}
 		err := dcrh.handleModuleVersionUpgrade(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -382,7 +382,7 @@ var _ = Describe("handleCustomScheduler", func() {
 	})
 
 	ctx := context.Background()
-	devConfig := &awslabsv1alpha1.DeviceConfig{
+	devConfig := &awslabsv1beta1.DeviceConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      devConfigName,
 			Namespace: devConfigNamespace,
@@ -457,7 +457,7 @@ var _ = Describe("handleNodeMetrics", func() {
 	})
 
 	ctx := context.Background()
-	devConfig := &awslabsv1alpha1.DeviceConfig{
+	devConfig := &awslabsv1beta1.DeviceConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      devConfigName,
 			Namespace: devConfigNamespace,

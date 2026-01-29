@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"os"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
@@ -41,8 +41,8 @@ var _ = Describe("setKMMModuleLoader", func() {
 				APIVersion: "kmm.sigs.x-k8s.io/v1beta1",
 			},
 		}
-		input := awslabsv1alpha1.DeviceConfig{
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+		input := awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriversImage: "some image:tag",
 			},
 		}
@@ -78,8 +78,8 @@ var _ = Describe("setKMMModuleLoader", func() {
 				APIVersion: "kmm.sigs.x-k8s.io/v1beta1",
 			},
 		}
-		input := awslabsv1alpha1.DeviceConfig{
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+		input := awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				UseInTreeDrivers: false,
 				DriversImage:     "some driver image",
 				Selector:         map[string]string{"some label": "some label value"},
@@ -122,8 +122,8 @@ var _ = Describe("setKMMDevicePlugin", func() {
 			},
 		}
 
-		input := awslabsv1alpha1.DeviceConfig{
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+		input := awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DevicePluginImage: "some device plugin image",
 			},
 		}
@@ -154,8 +154,8 @@ var _ = Describe("setKMMDevicePlugin", func() {
 			},
 		}
 
-		input := awslabsv1alpha1.DeviceConfig{
-			Spec: awslabsv1alpha1.DeviceConfigSpec{
+		input := awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DevicePluginImage: "some device plugin image",
 			},
 		}

@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	kmmlabels "github.com/rh-ecosystem-edge/kernel-module-management/pkg/labels"
 	v1 "k8s.io/api/core/v1"
@@ -38,13 +38,13 @@ const (
 
 //go:generate mockgen -source=upgrade.go -package=upgrade -destination=mock_upgrade.go UpgradeAPI
 type UpgradeAPI interface {
-	GetTargetedNodes(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) ([]v1.Node, error)
-	GetUpgradedNode(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node
+	GetTargetedNodes(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) ([]v1.Node, error)
+	GetUpgradedNode(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, nodes []v1.Node) *v1.Node
 	UncordonUpgradedNode(ctx context.Context, node *v1.Node) error
-	GetNodeForUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node
-	CordonNodeForUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, node *v1.Node) error
-	KickoffUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, node *v1.Node) error
-	RemoveUpgradeLabels(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error
+	GetNodeForUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, nodes []v1.Node) *v1.Node
+	CordonNodeForUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, node *v1.Node) error
+	KickoffUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, node *v1.Node) error
+	RemoveUpgradeLabels(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 }
 
 type upgradeImpl struct {
@@ -57,7 +57,7 @@ func NewUpgradeAPI(client client.Client) UpgradeAPI {
 	}
 }
 
-func (ui *upgradeImpl) GetTargetedNodes(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) ([]v1.Node, error) {
+func (ui *upgradeImpl) GetTargetedNodes(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) ([]v1.Node, error) {
 	selectedNodes := v1.NodeList{}
 	opt := client.MatchingLabels(devConfig.Spec.Selector)
 	err := ui.client.List(ctx, &selectedNodes, opt)
@@ -68,7 +68,7 @@ func (ui *upgradeImpl) GetTargetedNodes(ctx context.Context, devConfig *awslabsv
 	return selectedNodes.Items, nil
 }
 
-func (ui *upgradeImpl) GetUpgradedNode(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node {
+func (ui *upgradeImpl) GetUpgradedNode(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, nodes []v1.Node) *v1.Node {
 	for _, node := range nodes {
 		upgradeState := getNodeUpgradeState(node, devConfig)
 		if upgradeState == nodeUpgraded && isNodeTainted(node) {
@@ -105,7 +105,7 @@ func (ui *upgradeImpl) UncordonUpgradedNode(ctx context.Context, node *v1.Node) 
 	return ui.client.Patch(ctx, node, client.MergeFrom(nodeCopy))
 }
 
-func (ui *upgradeImpl) GetNodeForUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, nodes []v1.Node) *v1.Node {
+func (ui *upgradeImpl) GetNodeForUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, nodes []v1.Node) *v1.Node {
 	var upgradeNode *v1.Node
 
 	for _, node := range nodes {
@@ -122,7 +122,7 @@ func (ui *upgradeImpl) GetNodeForUpgrade(ctx context.Context, devConfig *awslabs
 	return upgradeNode
 }
 
-func (ui *upgradeImpl) CordonNodeForUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, node *v1.Node) error {
+func (ui *upgradeImpl) CordonNodeForUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, node *v1.Node) error {
 	if node == nil {
 		return nil
 	}
@@ -151,7 +151,7 @@ func (ui *upgradeImpl) CordonNodeForUpgrade(ctx context.Context, devConfig *awsl
 	return ui.client.Patch(ctx, node, client.MergeFrom(nodeCopy))
 }
 
-func (ui *upgradeImpl) KickoffUpgrade(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig, node *v1.Node) error {
+func (ui *upgradeImpl) KickoffUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig, node *v1.Node) error {
 	if node == nil {
 		return nil
 	}
@@ -169,7 +169,7 @@ func (ui *upgradeImpl) KickoffUpgrade(ctx context.Context, devConfig *awslabsv1a
 	return ui.client.Patch(ctx, node, client.MergeFrom(nodeCopy))
 }
 
-func (ui *upgradeImpl) RemoveUpgradeLabels(ctx context.Context, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (ui *upgradeImpl) RemoveUpgradeLabels(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 
 	selectedNodes := v1.NodeList{}
 
@@ -193,7 +193,7 @@ func (ui *upgradeImpl) RemoveUpgradeLabels(ctx context.Context, devConfig *awsla
 	return nil
 }
 
-func getNodeUpgradeState(node v1.Node, devConfig *awslabsv1alpha1.DeviceConfig) nodeUpgradeState {
+func getNodeUpgradeState(node v1.Node, devConfig *awslabsv1beta1.DeviceConfig) nodeUpgradeState {
 	nodeLabels := node.GetLabels()
 	moduleVersion, ok := nodeLabels[kmmlabels.GetModuleVersionLabelName(devConfig.Namespace, devConfig.Name)]
 	if !ok || moduleVersion != devConfig.Spec.DriverVersion {
@@ -206,7 +206,7 @@ func getNodeUpgradeState(node v1.Node, devConfig *awslabsv1alpha1.DeviceConfig) 
 	return nodeUpgraded
 }
 
-func isNewNodeForUpgrade(node *v1.Node, devConfig *awslabsv1alpha1.DeviceConfig) bool {
+func isNewNodeForUpgrade(node *v1.Node, devConfig *awslabsv1beta1.DeviceConfig) bool {
 	nodeLabels := node.GetLabels()
 	_, ok := nodeLabels[kmmlabels.GetModuleVersionLabelName(devConfig.Namespace, devConfig.Name)]
 	return !ok

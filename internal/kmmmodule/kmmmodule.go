@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	awslabsv1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 )
@@ -36,7 +36,7 @@ const (
 
 //go:generate mockgen -source=kmmmodule.go -package=kmmmodule -destination=mock_kmmmodule.go KMMModuleAPI
 type KMMModuleAPI interface {
-	SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.DeviceConfig) error
+	SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.DeviceConfig) error
 }
 
 type kmmModule struct {
@@ -51,7 +51,7 @@ func NewKMMModule(client client.Client, scheme *runtime.Scheme) KMMModuleAPI {
 	}
 }
 
-func (km *kmmModule) SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func (km *kmmModule) SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.DeviceConfig) error {
 	err := setKMMModuleLoader(mod, devConfig)
 	if err != nil {
 		return fmt.Errorf("failed to set KMM Module: %v", err)
@@ -60,7 +60,7 @@ func (km *kmmModule) SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *aw
 	return controllerutil.SetControllerReference(devConfig, mod, km.scheme)
 }
 
-func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.DeviceConfig) error {
+func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.DeviceConfig) error {
 	driversImage := devConfig.Spec.DriversImage + "-$KERNEL_VERSION"
 
 	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
@@ -93,7 +93,7 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 	return nil
 }
 
-func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.DeviceConfig) {
+func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.DeviceConfig) {
 	devicePluginImage := devConfig.Spec.DevicePluginImage
 	hostPathDirectory := v1.HostPathDirectory
 	mod.Spec.DevicePlugin = &kmmv1beta1.DevicePluginSpec{
@@ -131,12 +131,12 @@ func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1alpha1.Devic
 	}
 }
 
-func getNodeSelector(devConfig *awslabsv1alpha1.DeviceConfig) map[string]string {
+func getNodeSelector(devConfig *awslabsv1beta1.DeviceConfig) map[string]string {
 	if devConfig.Spec.Selector != nil {
 		return devConfig.Spec.Selector
 	}
 
 	ns := make(map[string]string, 0)
-	ns[fmt.Sprintf("feature.node.kubernetes.io/pci-%s.present", awslabsv1alpha1.PCIVendorID)] = "true"
+	ns[fmt.Sprintf("feature.node.kubernetes.io/pci-%s.present", awslabsv1beta1.PCIVendorID)] = "true"
 	return ns
 }

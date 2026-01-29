@@ -11,7 +11,7 @@ package nodemetrics
 import (
 	reflect "reflect"
 
-	v1alpha1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1alpha1"
+	v1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
 	v1 "k8s.io/api/apps/v1"
 )
@@ -40,7 +40,7 @@ func (m *MockNodeMetrics) EXPECT() *MockNodeMetricsMockRecorder {
 }
 
 // SetNodeMetricsAsDesired mocks base method.
-func (m *MockNodeMetrics) SetNodeMetricsAsDesired(ds *v1.DaemonSet, devConfig *v1alpha1.DeviceConfig) error {
+func (m *MockNodeMetrics) SetNodeMetricsAsDesired(ds *v1.DaemonSet, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetNodeMetricsAsDesired", ds, devConfig)
 	ret0, _ := ret[0].(error)
