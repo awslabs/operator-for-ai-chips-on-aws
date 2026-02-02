@@ -1,14 +1,14 @@
-apiVersion: k8s.aws/v1beta1
+apiVersion: k8s.aws/v1alpha1
 kind: DeviceConfig
 metadata:
-  name: device-config
-  namespace:  ai-operator-on-aws
+  name: neuron
+  namespace: ai-operator-on-aws
 spec:
-  useInTreeDrivers: false
-  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0
+  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
   devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
   schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
-  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:1.3.0
+  imageRepoSecret:
+    name: ecr-secret
   selector:
     feature.node.kubernetes.io/aws-neuron: "true"
