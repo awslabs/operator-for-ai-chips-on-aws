@@ -80,6 +80,7 @@ metadata:
   namespace: ai-operator-on-aws
 spec:
   driversImage: ${REGISTRY_BASE}/neuron-kernel-module:${VERSION}  # actual pull at runtime will use <image>-\$KERNEL_VERSION
+  driverVersion: v1.0.0  # increment this version to trigger a rolling upgrade of drivers across nodes
   devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
   schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
@@ -99,6 +100,7 @@ metadata:
   namespace: ai-operator-on-aws
 spec:
   driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-\$KERNEL_VERSION
+  driverVersion: v1.0.0  # increment this version to trigger a rolling upgrade of drivers across nodes
   devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
   schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0

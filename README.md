@@ -12,14 +12,13 @@ It reconciles a custom resource `DeviceConfig` to configure images and targeting
 ### Supported Platforms
 
 This operator is supported on:
-- **Red Hat OpenShift Container Platform (OCP)** 4.20.10 and above
-- **Red Hat OpenShift Service on AWS (ROSA)** 4.20.10 and above
-
-Both self-managed OpenShift and ROSA deployments are fully supported.
+- **Red Hat OpenShift Service on AWS (ROSA) with HCP** 4.18 and above
+  *  ROSA Classic architecture is not tested/supported
+- **Red Hat OpenShift Container Platform (OCP)** 4.18 and above (best effort support)
 
 ### Prerequisites
 
-- OpenShift 4.19 or newer
+- OpenShift 4.18 or newer, we provide best-effort support for 4.16 and 4.17
 - `oc` CLI and cluster-admin permissions
 - Cluster has AWS Neuron-capable hardware (PCI vendor ID 1d0f)
 - The following operators installed from OperatorHub:
@@ -201,6 +200,7 @@ Required spec fields (see CRD for details):
 
 Optional fields: 
 - `imageRepoSecret`: the secret that contains tokens for pulling the images
+- 'driverVersion': required for proper hanlding of rolling upgrades 
 - `selector`: defines which nodes to target for driver/device-plugin deployment
 
 Example:
