@@ -16,8 +16,12 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 COPY Makefile Makefile
+COPY VERSION VERSION
+
+COPY .git .git
 
 # Build
+RUN git config --global --add safe.directory ${PWD}
 RUN make manager
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
