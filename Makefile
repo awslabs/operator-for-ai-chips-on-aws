@@ -175,7 +175,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 .PHONY: controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5)
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
 .PHONY: golangci-lint
@@ -200,7 +200,7 @@ define go-get-tool
 @[ -f $(1) ] || { \
 set -e ;\
 echo "Downloading $(2)" ;\
-GOTOOLCHAIN=go1.24.3 GOBIN=$(PROJECT_DIR)/bin go install $(2) ;\
+GOBIN=$(PROJECT_DIR)/bin go install $(2) ;\
 }
 endef
 

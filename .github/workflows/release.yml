@@ -6,6 +6,12 @@ on:
       - main
     paths:
       - 'VERSION'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (leave empty to use VERSION file)'
+        required: false
+        type: string
 
 jobs:
   release:
@@ -24,7 +30,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.21'
+        go-version: '1.24'
         cache: true
         cache-dependency-path: |
           go.sum
@@ -34,19 +40,25 @@ jobs:
       run: |
         echo "Reading version from VERSION file..."
         
-        # Validate VERSION file exists and is readable
-        if [[ ! -f "VERSION" ]]; then
-          echo "Error: VERSION file not found"
-          exit 1
+        # Use manual input if provided, otherwise read from VERSION file
+        if [[ -n "${{ github.event.inputs.version }}" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+          echo "Using manually specified version: $VERSION"
+        else
+          # Validate VERSION file exists and is readable
+          if [[ ! -f "VERSION" ]]; then
+            echo "Error: VERSION file not found"
+            exit 1
+          fi
+          
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          if [[ -z "$VERSION" ]]; then
+            echo "Error: VERSION file is empty"
+            exit 1
+          fi
+          
+          echo "Found version: $VERSION"
         fi
-        
-        VERSION=$(cat VERSION | tr -d '[:space:]')
-        if [[ -z "$VERSION" ]]; then
-          echo "Error: VERSION file is empty"
-          exit 1
-        fi
-        
-        echo "Found version: $VERSION"
         
         # Validate version format (basic semantic version check)
         if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -54,10 +66,12 @@ jobs:
           exit 1
         fi
         
-        # Check if tag already exists
-        if git tag -l "v$VERSION" | grep -q "v$VERSION"; then
-          echo "Error: Tag v$VERSION already exists"
-          exit 1
+        # Check if tag already exists (skip check for manual runs to allow re-runs)
+        if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+          if git tag -l "v$VERSION" | grep -q "v$VERSION"; then
+            echo "Error: Tag v$VERSION already exists"
+            exit 1
+          fi
         fi
         
         echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
@@ -212,6 +226,15 @@ jobs:
         
         CURRENT_BRANCH=$(git branch --show-current)
         echo "Current branch: $CURRENT_BRANCH"
+        
+        # Delete existing tag if this is a manual re-run
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if git tag -l "v${{ env.NEW_VERSION }}" | grep -q "v${{ env.NEW_VERSION }}"; then
+            echo "Deleting existing tag v${{ env.NEW_VERSION }} for re-run..."
+            git tag -d "v${{ env.NEW_VERSION }}" || true
+            git push origin ":refs/tags/v${{ env.NEW_VERSION }}" || true
+          fi
+        fi
         
         # Create tag
         echo "Creating tag v${{ env.NEW_VERSION }}..."
