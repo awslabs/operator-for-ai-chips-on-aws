@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-neuron-operator
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/awslabs/operator-for-ai-chips-on-aws.git
+    targetRevision: main
+    path: deploy/helm/aws-neuron-operator
+    helm:
+      values: |
+        nfd:
+          enabled: true
+        kmm:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

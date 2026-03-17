@@ -1,0 +1,8 @@
+{{- if .Values.nfd.enabled }}
+apiVersion: nfd.openshift.io/v1
+kind: NodeFeatureDiscovery
+metadata:
+  name: nfd-instance
+  namespace: openshift-operators
+spec: {}
+{{- end }}

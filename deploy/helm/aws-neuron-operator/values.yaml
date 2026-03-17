@@ -1,0 +1,8 @@
+# Prerequisites - set to false if already installed in your cluster
+nfd:
+  enabled: true
+kmm:
+  enabled: true
+
+# Operator namespace
+namespace: ai-operator-on-aws
