@@ -3,6 +3,8 @@ kind: NodeFeatureRule
 metadata:
   name: neuron-nfd-rule
   namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   rules:
     - name: neuron-device

@@ -3,6 +3,8 @@ kind: DeviceConfig
 metadata:
   name: neuron
   namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
 spec:
   driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0
   devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0

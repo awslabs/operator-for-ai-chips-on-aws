@@ -5,3 +5,5 @@ metadata:
   labels:
     control-plane: controller-manager
     security.openshift.io/scc.podSecurityLabelSync: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"

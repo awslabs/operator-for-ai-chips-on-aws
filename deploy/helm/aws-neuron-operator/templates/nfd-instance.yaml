@@ -4,5 +4,7 @@ kind: NodeFeatureDiscovery
 metadata:
   name: nfd-instance
   namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec: {}
 {{- end }}
