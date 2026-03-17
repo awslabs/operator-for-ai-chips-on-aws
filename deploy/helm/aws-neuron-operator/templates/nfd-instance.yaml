@@ -3,7 +3,7 @@ apiVersion: nfd.openshift.io/v1
 kind: NodeFeatureDiscovery
 metadata:
   name: nfd-instance
-  namespace: openshift-operators
+  namespace: openshift-nfd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec: {}
