@@ -1,0 +1,46 @@
+# Podman-based Makefile
+# Usage: make -f Makefile.podman <target>
+
+include Makefile
+
+# Override container tool to use podman
+CONTAINER_TOOL := podman
+
+.PHONY: podman-build
+podman-build: ## Build image with podman
+	$(CONTAINER_TOOL) build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --build-arg VERSION=$(PROJECT_VERSION) .
+	$(CONTAINER_TOOL) push $(IMG)
+
+.PHONY: podman-bundle-build
+podman-bundle-build: ## Build bundle image with podman
+	$(CONTAINER_TOOL) build --platform linux/amd64 -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(CONTAINER_TOOL) push $(BUNDLE_IMG)
+
+.PHONY: podman-index
+podman-index: opm ## Build index with podman
+	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG} --generate -d Dockerfile.index --container-tool podman
+	$(CONTAINER_TOOL) build --platform linux/amd64 -t $(INDEX_IMG) -f Dockerfile.index .
+	$(CONTAINER_TOOL) push $(INDEX_IMG)
+	rm -rf Dockerfile.index database
+
+.PHONY: podman-test-build
+podman-test-build: ## Build test image with podman
+	$(eval IMAGE_TAG_BASE := $(TEST_IMAGE_TAG_BASE))
+	$(eval IMG := $(TEST_IMAGE_TAG_BASE)/operator:$(IMAGE_TAG))
+	$(CONTAINER_TOOL) build --platform linux/amd64 -t $(IMG) --build-arg TARGET=manager --build-arg VERSION=$(PROJECT_VERSION) .
+	$(CONTAINER_TOOL) push $(IMG)
+
+.PHONY: podman-test-bundle-build
+podman-test-bundle-build: ## Build test bundle with podman
+	$(eval BUNDLE_IMG := $(TEST_IMAGE_TAG_BASE)/operator-bundle:$(IMAGE_TAG))
+	$(CONTAINER_TOOL) build --platform linux/amd64 -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(CONTAINER_TOOL) push $(BUNDLE_IMG)
+
+.PHONY: podman-test-index
+podman-test-index: opm ## Build test index with podman
+	$(eval BUNDLE_IMG := $(TEST_IMAGE_TAG_BASE)/operator-bundle:$(IMAGE_TAG))
+	$(eval INDEX_IMG := $(TEST_IMAGE_TAG_BASE)/operator-index:$(IMAGE_TAG))
+	${OPM} index add --bundles ${BUNDLE_IMG} --tag ${INDEX_IMG} --generate -d Dockerfile.index --container-tool podman
+	$(CONTAINER_TOOL) build --platform linux/amd64 -t $(INDEX_IMG) -f Dockerfile.index .
+	$(CONTAINER_TOOL) push $(INDEX_IMG)
+	rm -rf Dockerfile.index database
