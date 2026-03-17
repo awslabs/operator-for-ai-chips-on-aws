@@ -138,16 +138,28 @@ fi
 
 # 5. Neuron Operator
 echo "Installing AWS Neuron Operator..."
+VERSION=$(cat "$(dirname "${BASH_SOURCE[0]}")/../VERSION")
 oc apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: aws-neuron-operator
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: public.ecr.aws/os-partners/neuron-openshift/operator-index:v${VERSION}
+  displayName: AWS Neuron Operator Catalog
+---
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: aws-neuron-operator
   namespace: ai-operator-on-aws
 spec:
-  channel: stable
+  channel: alpha
+  installPlanApproval: Automatic
   name: aws-neuron-operator
-  source: certified-operators
+  source: aws-neuron-operator
   sourceNamespace: openshift-marketplace
 EOF
 wait_for_csv ai-operator-on-aws aws-neuron-operator
