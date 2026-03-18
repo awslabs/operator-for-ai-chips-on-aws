@@ -4,9 +4,10 @@ Three installation methods for deploying the AWS Neuron Operator with prerequisi
 
 ## Prerequisites
 
-- OpenShift 4.19+
+- Red Hat OpenShift Service on AWS (ROSA) with HCP 4.19+, or OpenShift Container Platform (OCP) 4.19+
 - `oc` CLI with cluster-admin access
 - Cluster with Neuron instance nodes (inf1, inf2, trn1, trn1n)
+- Helm 3.x (for install script and Helm options)
 
 ## Option 1: ArgoCD (OpenShift GitOps) — recommended
 

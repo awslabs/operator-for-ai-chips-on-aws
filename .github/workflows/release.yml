@@ -278,6 +278,14 @@ jobs:
         body: |
           ## AWS Neuron Operator v${{ env.NEW_VERSION }}
           
+          ### Supported Platforms
+          
+          - Red Hat OpenShift Service on AWS (ROSA) with HCP 4.19+
+          - Red Hat OpenShift Container Platform (OCP) 4.19+
+          - Instance types: inf1, inf2, trn1, trn1n
+          
+          DeviceConfig image defaults correspond to Neuron SDK 2.28.0. Override via Helm values if a newer SDK is available.
+          
           ### Installation
           
           All methods install the operator with prerequisites (NFD, KMM). If you already have NFD or KMM, see options below to skip them.
