@@ -1,6 +1,6 @@
 # AWS Neuron Operator Deployment
 
-Two installation methods for deploying the AWS Neuron Operator with prerequisites (NFD, KMM) on OpenShift.
+Three installation methods for deploying the AWS Neuron Operator with prerequisites (NFD, KMM) on OpenShift.
 
 ## Prerequisites
 
@@ -12,7 +12,8 @@ Two installation methods for deploying the AWS Neuron Operator with prerequisite
 
 Uses sync waves to install operators in the correct order. Fully declarative and idempotent.
 
-Requires the OpenShift GitOps operator. If not already installed:
+### Install OpenShift GitOps (if not already installed)
+
 ```bash
 oc apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
@@ -28,22 +29,94 @@ spec:
 EOF
 ```
 
-Then deploy the Neuron operator:
+Grant the ArgoCD controller cluster-admin (required to create namespaces and operator subscriptions):
+
 ```bash
-# Edit deploy/argocd/application.yaml to set nfd.enabled / kmm.enabled as needed
-oc apply -f deploy/argocd/application.yaml
+oc adm policy add-cluster-role-to-user cluster-admin \
+  system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller
 ```
 
-Sync waves handle ordering:
-- Wave 0: Namespace
-- Wave 1: NFD + KMM subscriptions
+### Deploy with defaults
+
+```bash
+oc apply -f https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/argocd/application.yaml
+```
+
+### Deploy with overrides
+
+To skip prerequisites or override image versions, apply the Application with `helm.parameters`:
+
+```bash
+oc apply -f - <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-neuron-operator
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/awslabs/operator-for-ai-chips-on-aws.git
+    targetRevision: main
+    path: deploy/helm/aws-neuron-operator
+    helm:
+      parameters:
+        - name: nfd.enabled
+          value: "false"
+        - name: kmm.enabled
+          value: "false"
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+EOF
+```
+
+Available parameters (see `deploy/helm/aws-neuron-operator/values.yaml` for defaults):
+
+| Parameter | Description |
+|---|---|
+| `nfd.enabled` | Install Node Feature Discovery (default: `true`) |
+| `kmm.enabled` | Install Kernel Module Management (default: `true`) |
+| `deviceConfig.driversVersion` | Neuron kernel module version |
+| `deviceConfig.devicePluginVersion` | Neuron device plugin version |
+| `deviceConfig.schedulerVersion` | kube-scheduler version |
+| `deviceConfig.schedulerExtensionVersion` | Neuron scheduler extension version |
+| `deviceConfig.monitorVersion` | Neuron monitor version |
+
+### Sync waves
+
+- Wave 0: Namespace + NFD subscription
+- Wave 1: KMM subscription
 - Wave 2: NFD instance + NFD rule
-- Wave 3: Neuron operator subscription
+- Wave 3: Neuron operator (CatalogSource + Subscription)
 - Wave 4: DeviceConfig
 
-## Option 2: Install Script
+## Option 2: Helm
 
-For clusters without ArgoCD. Handles ordering via wait loops.
+```bash
+helm install aws-neuron-operator deploy/helm/aws-neuron-operator/
+
+# With overrides
+helm install aws-neuron-operator deploy/helm/aws-neuron-operator/ \
+  --set nfd.enabled=false \
+  --set kmm.enabled=false \
+  --set deviceConfig.devicePluginVersion=2.30.0.0
+```
+
+## Option 3: Install Script
+
+For clusters without ArgoCD or Helm. Handles ordering via wait loops.
 
 ```bash
 # Full install (includes NFD + KMM)
@@ -56,16 +129,10 @@ For clusters without ArgoCD. Handles ordering via wait loops.
 ./deploy/install.sh --skip-nfd --skip-kmm
 ```
 
-## Skipping Prerequisites
-
-If NFD or KMM are already installed in your cluster:
-
-- **ArgoCD**: set `nfd.enabled: false` and/or `kmm.enabled: false` in `deploy/argocd/application.yaml`
-- **Script**: use `--skip-nfd` and/or `--skip-kmm` flags
-
 ## Verify
 
 ```bash
+oc get csv -n ai-operator-on-aws
 oc get pods -n ai-operator-on-aws
 oc get nodes -l feature.node.kubernetes.io/aws-neuron=true
 ```

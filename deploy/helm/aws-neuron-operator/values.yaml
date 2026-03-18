@@ -6,3 +6,11 @@ kmm:
 
 # Operator namespace
 namespace: ai-operator-on-aws
+
+# DeviceConfig image versions
+deviceConfig:
+  driversVersion: "2.26.5.0"
+  devicePluginVersion: "2.29.94.0"
+  schedulerVersion: "v1.32.12-eks-1-32-35"
+  schedulerExtensionVersion: "2.29.94.0"
+  monitorVersion: "1.8.0"
