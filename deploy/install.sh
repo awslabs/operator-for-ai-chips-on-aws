@@ -9,6 +9,7 @@ set -euo pipefail
 
 SKIP_NFD=false
 SKIP_KMM=false
+EXTRA_ARGS=()
 
 for arg in "$@"; do
   case $arg in
@@ -17,6 +18,15 @@ for arg in "$@"; do
     *) echo "Unknown option: $arg"; exit 1 ;;
   esac
 done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHART_DIR="${SCRIPT_DIR}/helm/aws-neuron-operator"
+
+command -v helm &>/dev/null || { echo "Error: helm is required"; exit 1; }
+command -v oc &>/dev/null || { echo "Error: oc is required"; exit 1; }
+
+[[ "$SKIP_NFD" == "true" ]] && EXTRA_ARGS+=(--set nfd.enabled=false)
+[[ "$SKIP_KMM" == "true" ]] && EXTRA_ARGS+=(--set kmm.enabled=false)
 
 wait_for_csv() {
   local ns=$1 name=$2
@@ -32,156 +42,48 @@ wait_for_crd() {
   echo "✓ CRD $crd available"
 }
 
-# 1. Namespace + OperatorGroup
-echo "Creating namespace..."
-oc apply -f - <<EOF
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: ai-operator-on-aws
-  labels:
-    control-plane: controller-manager
-    security.openshift.io/scc.podSecurityLabelSync: "true"
----
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: aws-neuron-operator
-  namespace: ai-operator-on-aws
-spec: {}
-EOF
+render() {
+  helm template aws-neuron-operator "$CHART_DIR" "${EXTRA_ARGS[@]}" -s "templates/$1"
+}
 
-# 2. NFD
+# Wave 0: Namespace
+echo "Creating namespace..."
+render namespace.yaml | oc apply -f -
+
+# Wave 0-1: NFD
 if [[ "$SKIP_NFD" == "false" ]]; then
   echo "Installing Node Feature Discovery..."
-  oc apply -f - <<EOF
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: openshift-nfd
----
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: openshift-nfd
-  namespace: openshift-nfd
-spec:
-  targetNamespaces:
-    - openshift-nfd
----
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: nfd
-  namespace: openshift-nfd
-spec:
-  channel: stable
-  name: nfd
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-EOF
+  render nfd-subscription.yaml | oc apply -f -
   wait_for_csv openshift-nfd nfd
   wait_for_crd nodefeaturerules.nfd.openshift.io
-
-  oc apply -f - <<EOF
-apiVersion: nfd.openshift.io/v1
-kind: NodeFeatureDiscovery
-metadata:
-  name: nfd-instance
-  namespace: openshift-nfd
-spec: {}
-EOF
+  echo "Creating NFD instance..."
+  render nfd-instance.yaml | oc apply -f -
 else
-  echo "Skipping NFD installation (--skip-nfd)"
+  echo "Skipping NFD (--skip-nfd)"
 fi
 
-# 3. NFD Rule (always needed)
-echo "Applying NFD rule for Neuron devices..."
-oc apply -f - <<EOF
-apiVersion: nfd.openshift.io/v1alpha1
-kind: NodeFeatureRule
-metadata:
-  name: neuron-nfd-rule
-  namespace: ai-operator-on-aws
-spec:
-  rules:
-    - name: neuron-device
-      labels:
-        feature.node.kubernetes.io/aws-neuron: "true"
-      matchAny:
-        - matchFeatures:
-            - feature: pci.device
-              matchExpressions:
-                vendor: {op: In, value: ["1d0f"]}
-                device: {op: In, value: ["7064","7065","7066","7067","7164","7264","7364"]}
-EOF
-
-# 4. KMM
+# Wave 1: KMM
 if [[ "$SKIP_KMM" == "false" ]]; then
   echo "Installing Kernel Module Management..."
-  oc apply -f - <<EOF
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: kernel-module-management
-  namespace: openshift-operators
-spec:
-  channel: stable
-  name: kernel-module-management
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-EOF
+  render kmm-subscription.yaml | oc apply -f -
   wait_for_csv openshift-operators kernel-module-management
 else
-  echo "Skipping KMM installation (--skip-kmm)"
+  echo "Skipping KMM (--skip-kmm)"
 fi
 
-# 5. Neuron Operator
+# Wave 2: NFD Rule
+echo "Applying NFD rule..."
+render nfd-rule.yaml | oc apply -f -
+
+# Wave 3: Neuron Operator
 echo "Installing AWS Neuron Operator..."
-VERSION=$(cat "$(dirname "${BASH_SOURCE[0]}")/../VERSION")
-oc apply -f - <<EOF
-apiVersion: operators.coreos.com/v1alpha1
-kind: CatalogSource
-metadata:
-  name: aws-neuron-operator
-  namespace: openshift-marketplace
-spec:
-  sourceType: grpc
-  image: public.ecr.aws/os-partners/neuron-openshift/operator-index:v${VERSION}
-  displayName: AWS Neuron Operator Catalog
----
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: aws-neuron-operator
-  namespace: ai-operator-on-aws
-spec:
-  channel: alpha
-  installPlanApproval: Automatic
-  name: aws-neuron-operator
-  source: aws-neuron-operator
-  sourceNamespace: openshift-marketplace
-EOF
+render neuron-subscription.yaml | oc apply -f -
 wait_for_csv ai-operator-on-aws aws-neuron-operator
 wait_for_crd deviceconfigs.k8s.aws
 
-# 6. DeviceConfig
+# Wave 4: DeviceConfig
 echo "Creating DeviceConfig..."
-oc apply -f - <<EOF
-apiVersion: k8s.aws/v1beta1
-kind: DeviceConfig
-metadata:
-  name: neuron
-  namespace: ai-operator-on-aws
-spec:
-  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0
-  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
-  customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.32.9-eks-1-32-24
-  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.29.16.0
-  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:1.3.0
-  selector:
-    feature.node.kubernetes.io/aws-neuron: "true"
-EOF
+render deviceconfig.yaml | oc apply -f -
 
 echo ""
 echo "✓ AWS Neuron Operator installed successfully"
