@@ -53,6 +53,8 @@ kind: Application
 metadata:
   name: aws-neuron-operator
   namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
