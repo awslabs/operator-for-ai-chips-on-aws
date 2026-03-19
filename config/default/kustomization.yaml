@@ -1,5 +1,5 @@
 # Adds namespace to all resources.
-namespace:  ai-operator-on-aws
+namespace:  aws-neuron-operator
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named

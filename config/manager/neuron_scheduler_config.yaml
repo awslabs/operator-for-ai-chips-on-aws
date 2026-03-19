@@ -3,7 +3,7 @@ kind: KubeSchedulerConfiguration
 profiles:
   - schedulerName: neuron-scheduler
 extenders:
-  - urlPrefix: 'http://awslabs-gpu-operator-neuron-scheduler-extension.ai-operator-on-aws.svc.cluster.local:12345'
+  - urlPrefix: 'http://awslabs-gpu-operator-neuron-scheduler-extension.aws-neuron-operator.svc.cluster.local:12345'
     filterVerb: filter
     bindVerb: bind
     enableHTTPS: false
@@ -16,5 +16,5 @@ extenders:
     ignorable: false
 leaderElection:
   leaderElect: true
-  resourceNamespace: ai-operator-on-aws 
+  resourceNamespace: aws-neuron-operator
   resourceName: neuron-scheduler

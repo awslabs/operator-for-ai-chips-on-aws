@@ -2,7 +2,7 @@ apiVersion: nfd.openshift.io/v1alpha1
 kind: NodeFeatureRule
 metadata:
   name: neuron-nfd-rule
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 spec:
   rules:
     - name: neuron-device
