@@ -99,7 +99,7 @@ Download from GitHub Actions workflow artifacts:
    kubectl apply -f aws-neuron-operator.yaml
    
    # Wait for operator to be ready
-   kubectl wait --for=condition=Available deployment/aws-neuron-operator-controller-manager -n ai-operator-on-aws --timeout=300s
+   kubectl wait --for=condition=Available deployment/aws-neuron-operator-controller-manager -n aws-neuron-operator --timeout=300s
    
    # Apply the test DeviceConfig
    kubectl apply -f deviceconfig-sample.yaml
@@ -108,13 +108,13 @@ Download from GitHub Actions workflow artifacts:
 3. **Verify Installation**
    ```bash
    # Check operator status
-   kubectl get pods -n ai-operator-on-aws
+   kubectl get pods -n aws-neuron-operator
    
    # Check DeviceConfig status
-   kubectl get deviceconfig -n ai-operator-on-aws
+   kubectl get deviceconfig -n aws-neuron-operator
    
    # View operator logs
-   kubectl logs -n ai-operator-on-aws deployment/aws-neuron-operator-controller-manager
+   kubectl logs -n aws-neuron-operator deployment/aws-neuron-operator-controller-manager
    ```
 
 ### Cleanup

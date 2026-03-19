@@ -77,7 +77,7 @@ apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: neuron-test
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 spec:
   driversImage: ${REGISTRY_BASE}/neuron-kernel-module:${VERSION}  # actual pull at runtime will use <image>-\$KERNEL_VERSION
   driverVersion: v1.0.0  # increment this version to trigger a rolling upgrade of drivers across nodes
@@ -97,7 +97,7 @@ apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: neuron
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 spec:
   driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-\$KERNEL_VERSION
   driverVersion: v1.0.0  # increment this version to trigger a rolling upgrade of drivers across nodes
