@@ -317,7 +317,7 @@ preflight check container <image> --certification-project-id=<id>
 
 # 4. Deploy and test functionality
 make deploy IMG=<image>
-kubectl get pods -n ai-operator-on-aws  # All pods should be running
+kubectl get pods -n aws-neuron-operator  # All pods should be running
 ```
 
 ---

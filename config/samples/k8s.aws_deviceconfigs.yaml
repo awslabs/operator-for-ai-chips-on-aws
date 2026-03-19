@@ -2,7 +2,7 @@ apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: device-config
-  namespace:  ai-operator-on-aws
+  namespace:  aws-neuron-operator
 spec:
   useInTreeDrivers: false
   driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0

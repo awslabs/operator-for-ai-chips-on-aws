@@ -60,7 +60,7 @@ Required: Install the Kernel Module Management (KMM) and Node Feature Discovery 
 Important: once the NFD operator is installed, the NFD CR needs to be applied to the cluster. The default NFD CR is supplied by the OLM UI,
 and can be applied as is.
 
-This deploys the operator controller, CRDs, RBAC, and the NFD rule into namespace `ai-operator-on-aws`.
+This deploys the operator controller, CRDs, RBAC, and the NFD rule into namespace `aws-neuron-operator`.
 
 ```bash
 # Ensure NFD and KMM operators are installed first
@@ -69,7 +69,7 @@ This deploys the operator controller, CRDs, RBAC, and the NFD rule into namespac
 make deploy IMG=<your-registry>/<repo>/aws-neuron-operator:latest
 
 # Verify controller is running
-oc get pods -n ai-operator-on-aws
+oc get pods -n aws-neuron-operator
 ```
 
 This rule adds labels to nodes with Neuron PCI devices (vendor `1d0f`, specific device IDs) and can be used for scheduling.
@@ -109,7 +109,7 @@ metadata:
   labels:
     control-plane: controller-manager
     security.openshift.io/scc.podSecurityLabelSync: 'true'
-  name: ai-operator-on-aws
+  name: aws-neuron-operator
 ```
 
 Create the OperatorGroup.
@@ -119,7 +119,7 @@ apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
   name: aws-neuron-operator
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 ```
 
 Create a CatalogSource in `openshift-marketplace` referencing your index image, then create a Subscription in your target namespace.
@@ -143,7 +143,7 @@ apiVersion: operators.coreos.com/v1beta1
 kind: Subscription
 metadata:
   name: aws-neuron-operator-sub
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 spec:
   channel: "alpha"
   installPlanApproval: Automatic
@@ -159,7 +159,7 @@ apiVersion: nfd.openshift.io/v1alpha1
 kind: NodeFeatureRule
 metadata:
   name: neuron-nfd-rule
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 spec:
   rules:
     - name: neuron-device
@@ -210,7 +210,7 @@ apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
   name: neuron
-  namespace: ai-operator-on-aws
+  namespace: aws-neuron-operator
 spec:
   driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.25.4.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
   devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.29.16.0
@@ -233,13 +233,13 @@ oc apply -f deviceconfig.yaml
 
 - Operator pods:
 ```bash
-oc get pods -n ai-operator-on-aws
+oc get pods -n aws-neuron-operator
 ```
 
 - KMM Module and DaemonSets:
 ```bash
 oc get modules.kmm.sigs.x-k8s.io -A
-oc get ds -n ai-operator-on-aws
+oc get ds -n aws-neuron-operator
 ```
 
 - Node labels from NFD:
