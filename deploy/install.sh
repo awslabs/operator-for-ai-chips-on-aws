@@ -78,7 +78,7 @@ render nfd-rule.yaml | oc apply -f -
 # Wave 3: Neuron Operator
 echo "Installing AWS Neuron Operator..."
 render neuron-subscription.yaml | oc apply -f -
-wait_for_csv ai-operator-on-aws aws-neuron-operator
+wait_for_csv aws-neuron-operator aws-neuron-operator
 wait_for_crd deviceconfigs.k8s.aws
 
 # Wave 4: DeviceConfig
@@ -87,4 +87,4 @@ render deviceconfig.yaml | oc apply -f -
 
 echo ""
 echo "✓ AWS Neuron Operator installed successfully"
-echo "  Verify: oc get pods -n ai-operator-on-aws"
+echo "  Verify: oc get pods -n aws-neuron-operator"

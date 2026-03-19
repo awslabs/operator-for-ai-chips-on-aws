@@ -5,7 +5,7 @@ kmm:
   enabled: true
 
 # Operator namespace
-namespace: ai-operator-on-aws
+namespace: aws-neuron-operator
 
 # DeviceConfig image versions (Neuron SDK 2.28.0)
 deviceConfig:

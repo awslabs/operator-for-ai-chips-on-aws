@@ -135,7 +135,7 @@ For clusters without ArgoCD or Helm. Handles ordering via wait loops.
 ## Verify
 
 ```bash
-oc get csv -n ai-operator-on-aws
-oc get pods -n ai-operator-on-aws
+oc get csv -n aws-neuron-operator
+oc get pods -n aws-neuron-operator
 oc get nodes -l feature.node.kubernetes.io/aws-neuron=true
 ```
