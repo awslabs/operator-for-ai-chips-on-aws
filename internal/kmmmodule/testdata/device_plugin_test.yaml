@@ -6,6 +6,7 @@ metadata:
 spec:
   devicePlugin:
     serviceAccountName: "awslabs-gpu-operator-kmm-device-plugin"
+    automountServiceAccountToken: false
     container:
       image: "public.ecr.aws/neuron/neuron-device-plugin:2.24.23.0"
       env:
@@ -16,8 +17,28 @@ spec:
       volumeMounts:
       - name: sys
         mountPath: /sys
+      - name: kube-api-kubelet-access
+        mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        readOnly:  true
     volumes:
     - name: sys
       hostPath:
         path: /sys
         type: Directory
+    - name: kube-api-kubelet-access
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            path: token
+            expirationSeconds: 3607
+        - configMap:
+            name: kube-root-kubelet-ca
+            items:
+              - key: ca-bundle.crt
+                path: ca.crt
+        - downwardAPI:
+            items:
+              - path: namespace
+                fieldRef:
+                  fieldPath: metadata.namespace

@@ -24,6 +24,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2/textlogger"
 	ctrl "sigs.k8s.io/controller-runtime"
+	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -33,6 +34,7 @@ import (
 	dcv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/cmd"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/config"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/configmap"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/controllers"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
@@ -110,6 +112,19 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	//+kubebuilder:scaffold:builder
+
+	// Ensure unified configmap before starting the reconciliation loop
+	setupLogger.Info("create kubelet-kube-root-ca configmap before starting manager")
+	bootstrapClient, err := runtimeclient.New(mgr.GetConfig(), runtimeclient.Options{
+		Scheme: scheme,
+		Mapper: mgr.GetRESTMapper(),
+	})
+	if err != nil {
+		cmd.FatalError(setupLogger, err, "unable to create bootstrapClient")
+	}
+	if err = configmap.CreateKubeletKubeRootCAConfigMap(ctx, bootstrapClient); err != nil {
+		cmd.FatalError(setupLogger, err, "failed to ensure unified configmap")
+	}
 
 	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		cmd.FatalError(setupLogger, err, "unable to set up health check")
