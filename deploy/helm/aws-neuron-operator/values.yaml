@@ -10,7 +10,7 @@ namespace: aws-neuron-operator
 # DeviceConfig image versions (Neuron SDK 2.28.0)
 deviceConfig:
   driversVersion: "2.26.5.0"
-  devicePluginVersion: "2.29.16.0"
+  devicePluginVersion: "2.24.23.0"
   schedulerVersion: "v1.32.9-eks-1-32-24"
-  schedulerExtensionVersion: "2.29.16.0"
+  schedulerExtensionVersion: "2.24.23.0"
   monitorVersion: "1.8.0"
