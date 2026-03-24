@@ -66,7 +66,7 @@ fi
 if [[ "$SKIP_KMM" == "false" ]]; then
   echo "Installing Kernel Module Management..."
   render kmm-subscription.yaml | oc apply -f -
-  wait_for_csv openshift-operators kernel-module-management
+  wait_for_csv openshift-kmm kernel-module-management
 else
   echo "Skipping KMM (--skip-kmm)"
 fi

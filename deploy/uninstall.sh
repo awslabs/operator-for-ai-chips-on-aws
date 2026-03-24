@@ -28,8 +28,11 @@ oc delete nodefeaturerule neuron-nfd-rule -n "$NS" --ignore-not-found
 
 if [[ "$SKIP_KMM" == "false" ]]; then
   echo "Removing KMM subscription and CSV..."
-  oc delete subscription kernel-module-management -n openshift-operators --ignore-not-found
-  oc delete csv -n openshift-operators -l operators.coreos.com/kernel-module-management.openshift-operators= --ignore-not-found 2>/dev/null
+  oc delete subscription kernel-module-management -n openshift-kmm --ignore-not-found
+  oc delete csv -n openshift-kmm -l operators.coreos.com/kernel-module-management.openshift-kmm= --ignore-not-found 2>/dev/null
+  oc delete operatorgroup openshift-kmm -n openshift-kmm --ignore-not-found
+  echo "Removing openshift-kmm namespace..."
+  oc delete namespace openshift-kmm --ignore-not-found
 fi
 
 if [[ "$SKIP_NFD" == "false" ]]; then
