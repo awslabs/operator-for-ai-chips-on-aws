@@ -11,6 +11,6 @@ namespace: aws-neuron-operator
 deviceConfig:
   driversVersion: "2.26.5.0"
   devicePluginVersion: "2.29.16.0"
-  schedulerVersion: "v1.32.12-eks-1-32-35"
+  schedulerVersion: "v1.32.9-eks-1-32-24"
   schedulerExtensionVersion: "2.29.16.0"
   monitorVersion: "1.8.0"
