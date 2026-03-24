@@ -15,6 +15,4 @@ metadata:
   namespace: {{ .Values.namespace }}
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-spec:
-  targetNamespaces:
-    - {{ .Values.namespace }}
+spec: {}
