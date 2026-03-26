@@ -28,6 +28,7 @@ import (
 	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -115,6 +116,11 @@ func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.Device
 					Name:      "sys",
 					MountPath: "/sys",
 				},
+				{
+					Name:      "kube-api-kubelet-access",
+					MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
+					ReadOnly:  true,
+				},
 			},
 		},
 		Volumes: []v1.Volume{
@@ -127,7 +133,49 @@ func setKMMDevicePlugin(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.Device
 					},
 				},
 			},
+			{
+				Name: "kube-api-kubelet-access",
+				VolumeSource: v1.VolumeSource{
+					Projected: &v1.ProjectedVolumeSource{
+						DefaultMode: ptr.To[int32](420),
+						Sources: []v1.VolumeProjection{
+							{
+								ServiceAccountToken: &v1.ServiceAccountTokenProjection{
+									Path:              "token",
+									ExpirationSeconds: ptr.To[int64](3607),
+								},
+							},
+							{
+								ConfigMap: &v1.ConfigMapProjection{
+									LocalObjectReference: v1.LocalObjectReference{
+										Name: "kube-root-kubelet-ca",
+									},
+									Items: []v1.KeyToPath{
+										{
+											Key:  "ca-bundle.crt",
+											Path: "ca.crt",
+										},
+									},
+								},
+							},
+							{
+								DownwardAPI: &v1.DownwardAPIProjection{
+									Items: []v1.DownwardAPIVolumeFile{
+										{
+											Path: "namespace",
+											FieldRef: &v1.ObjectFieldSelector{
+												FieldPath: "metadata.namespace",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
+		AutomountServiceAccountToken: ptr.To(false),
 	}
 }
 

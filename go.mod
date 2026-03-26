@@ -6,7 +6,7 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
-	github.com/rh-ecosystem-edge/kernel-module-management v0.0.0-20251211124026-771db63ef59b
+	github.com/rh-ecosystem-edge/kernel-module-management v0.0.0-20260310150335-13dcc107ecf5
 	go.uber.org/mock v0.5.1
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.32.3
