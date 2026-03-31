@@ -20,8 +20,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
-  channel: alpha
-  installPlanApproval: Automatic
+  channel: {{ .Values.channel }}
+  installPlanApproval: {{ .Values.installPlanApproval }}
   name: aws-neuron-operator
   source: aws-neuron-operator
   sourceNamespace: openshift-marketplace

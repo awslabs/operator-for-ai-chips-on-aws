@@ -7,6 +7,10 @@ kmm:
 # Operator namespace
 namespace: aws-neuron-operator
 
+# Operator install settings
+channel: Stable
+installPlanApproval: Automatic  # Set to Manual for production
+
 # DeviceConfig image versions (Neuron SDK 2.28.0)
 deviceConfig:
   driversVersion: "2.26.5.0"
