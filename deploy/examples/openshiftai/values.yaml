@@ -1,0 +1,6 @@
+serviceMesh:
+  enabled: true
+serverless:
+  enabled: true
+openshiftAI:
+  channel: fast

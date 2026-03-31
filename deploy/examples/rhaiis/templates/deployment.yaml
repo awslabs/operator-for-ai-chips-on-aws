@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neuron-vllm
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: neuron-vllm
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neuron-vllm
+  template:
+    metadata:
+      labels:
+        app: neuron-vllm
+    spec:
+      schedulerName: neuron-scheduler
+      volumes:
+        - name: model-volume
+          persistentVolumeClaim:
+            claimName: model-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "2Gi"
+      initContainers:
+        - name: fetch-model
+          image: python:3.11-slim
+          env:
+            - name: HF_HOME
+              value: /model
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: HF_TOKEN
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+             set -ex
+             if [ ! -f "/model/config.json" ]; then
+              export PYTHONUSERBASE="/tmp/pip"
+              export PATH="$PYTHONUSERBASE/bin:$PATH"
+              pip install --no-cache-dir --user "huggingface_hub>=1.0"
+              $PYTHONUSERBASE/bin/hf download {{ .Values.model.name }} --local-dir /model
+             else
+              echo "Model already present, skipping pull"
+             fi
+          volumeMounts:
+            - name: model-volume
+              mountPath: /model
+      containers:
+        - name: vllm-neuron
+          image: registry.redhat.io/rhaiis/vllm-neuron-rhel9:3
+          imagePullPolicy: IfNotPresent
+          workingDir: /model
+          env:
+            - name: NEURON_CACHE_URL
+              value: "/model/neuron_cache"
+          command:
+            - python
+            - '-m'
+            - vllm.entrypoints.openai.api_server
+          args:
+            - '--port=8000'
+            - '--model=/model'
+            - '--served-model-name={{ .Values.model.name }}'
+            - '--tensor-parallel-size={{ .Values.model.tensorParallelSize }}'
+            - '--max-num-seqs={{ .Values.model.maxNumSeqs }}'
+            - '--max-model-len={{ .Values.model.maxModelLen }}'
+            - '--block-size=16'
+            - '--no-enable-prefix-caching'
+            - '--no-enable-chunked-prefill'
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 900
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 900
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            limits:
+              memory: "100Gi"
+              aws.amazon.com/neuron: 1
+            requests:
+              memory: "10Gi"
+              aws.amazon.com/neuron: 1
+          volumeMounts:
+            - name: model-volume
+              mountPath: /model
+            - name: shm
+              mountPath: /dev/shm
+      restartPolicy: Always

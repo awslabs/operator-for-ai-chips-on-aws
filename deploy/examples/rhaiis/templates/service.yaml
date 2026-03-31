@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: neuron-vllm
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  selector:
+    app: neuron-vllm
+  ports:
+    - name: vllm-port
+      protocol: TCP
+      port: 80
+      targetPort: 8000
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: neuron-vllm
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  to:
+    kind: Service
+    name: neuron-vllm
+  port:
+    targetPort: vllm-port
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
