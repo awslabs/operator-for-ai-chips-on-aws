@@ -6,18 +6,26 @@ The release process is now simplified to use manual VERSION file management with
 
 ## How to Create a Release
 
-### 1. Update VERSION File
-Create a PR that updates the `VERSION` file in the repository root:
+### 1. Update VERSION and Chart.yaml
+Create a PR that updates both the `VERSION` file and the Helm chart version. Both must be updated together in the same PR.
 
 ```bash
-# Update the version (use semantic versioning X.Y.Z)
-echo "1.2.3" > VERSION
+# Set the new version
+NEW_VERSION="1.2.3"
+
+# Update VERSION file
+echo "$NEW_VERSION" > VERSION
+
+# Update Helm chart appVersion
+sed -i "s/^appVersion:.*/appVersion: $NEW_VERSION/" deploy/helm/aws-neuron-operator/Chart.yaml
 
 # Commit and create PR
-git add VERSION
-git commit -m "Release version 1.2.3"
-git push origin feature/release-1.2.3
+git add VERSION deploy/helm/aws-neuron-operator/Chart.yaml
+git commit -m "Release version $NEW_VERSION"
+git push origin feature/release-$NEW_VERSION
 ```
+
+> **Important:** The `main` branch is protected and requires PRs. The release workflow does not push commits to main — it only creates a tag and publishes artifacts from the merged commit. Both `VERSION` and `Chart.yaml` must be updated in the PR before merge.
 
 ### 2. Merge PR
 When the PR is merged to main, the release workflow will automatically:

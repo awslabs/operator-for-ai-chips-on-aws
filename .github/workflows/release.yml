@@ -215,23 +215,24 @@ jobs:
         
         echo "✓ Release manifests generated and validated successfully"
 
-    - name: Update Helm chart version
+    - name: Validate Helm chart version
       run: |
-        echo "Updating Helm chart to version ${{ env.NEW_VERSION }}..."
+        echo "Validating Helm chart version matches release..."
         CHART_FILE="deploy/helm/aws-neuron-operator/Chart.yaml"
-        sed -i "s/^version:.*/version: ${{ env.NEW_VERSION }}/" "$CHART_FILE"
-        sed -i "s/^appVersion:.*/appVersion: \"${{ env.NEW_VERSION }}\"/" "$CHART_FILE"
-        echo "✓ Helm chart updated"
+        CHART_VERSION=$(grep '^appVersion:' "$CHART_FILE" | sed 's/appVersion: *"\?\([^"]*\)"\?/\1/')
+        if [ "$CHART_VERSION" != "${{ env.NEW_VERSION }}" ]; then
+          echo "Error: Chart.yaml appVersion ($CHART_VERSION) does not match release version (${{ env.NEW_VERSION }})"
+          echo "Please update Chart.yaml in your release PR before merging."
+          exit 1
+        fi
+        echo "✓ Helm chart version matches release"
 
-    - name: Commit and tag
+    - name: Create tag and push
       run: |
         echo "Configuring git and creating release tag..."
         
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        
-        CURRENT_BRANCH=$(git branch --show-current)
-        echo "Current branch: $CURRENT_BRANCH"
         
         # Delete existing tag if this is a manual re-run
         if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -242,27 +243,21 @@ jobs:
           fi
         fi
         
-        # Commit Helm chart version update
-        if ! git diff --quiet deploy/helm/aws-neuron-operator/Chart.yaml 2>/dev/null; then
-          git add deploy/helm/aws-neuron-operator/Chart.yaml
-          git commit -m "Release v${{ env.NEW_VERSION }}: update Helm chart version"
-        fi
-        
-        # Create tag
+        # Create tag (no commit needed — VERSION and Chart.yaml already updated in PR)
         echo "Creating tag v${{ env.NEW_VERSION }}..."
         if ! git tag "v${{ env.NEW_VERSION }}"; then
           echo "Error: Failed to create tag"
           exit 1
         fi
         
-        # Push commit + tag together
-        echo "Pushing to remote..."
+        # Push tag only (not the branch)
+        echo "Pushing tag..."
         for i in {1..3}; do
-          if git push origin "$CURRENT_BRANCH" "v${{ env.NEW_VERSION }}"; then
-            echo "✓ Pushed successfully"
+          if git push origin "v${{ env.NEW_VERSION }}"; then
+            echo "✓ Tag pushed successfully"
             break
           elif [ $i -eq 3 ]; then
-            echo "Error: Failed to push after 3 attempts"
+            echo "Error: Failed to push tag after 3 attempts"
             exit 1
           else
             echo "Push attempt $i failed, retrying..."
