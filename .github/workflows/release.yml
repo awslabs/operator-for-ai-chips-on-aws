@@ -219,13 +219,24 @@ jobs:
       run: |
         echo "Validating Helm chart version matches release..."
         CHART_FILE="deploy/helm/aws-neuron-operator/Chart.yaml"
-        CHART_VERSION=$(grep '^appVersion:' "$CHART_FILE" | sed 's/appVersion: *"\?\([^"]*\)"\?/\1/')
+        
+        CHART_VERSION=$(grep '^version:' "$CHART_FILE" | sed 's/version: *"\?\([^"]*\)"\?/\1/')
+        APP_VERSION=$(grep '^appVersion:' "$CHART_FILE" | sed 's/appVersion: *"\?\([^"]*\)"\?/\1/')
+        
+        FAIL=0
         if [ "$CHART_VERSION" != "${{ env.NEW_VERSION }}" ]; then
-          echo "Error: Chart.yaml appVersion ($CHART_VERSION) does not match release version (${{ env.NEW_VERSION }})"
-          echo "Please update Chart.yaml in your release PR before merging."
+          echo "Error: Chart.yaml version ($CHART_VERSION) does not match release version (${{ env.NEW_VERSION }})"
+          FAIL=1
+        fi
+        if [ "$APP_VERSION" != "${{ env.NEW_VERSION }}" ]; then
+          echo "Error: Chart.yaml appVersion ($APP_VERSION) does not match release version (${{ env.NEW_VERSION }})"
+          FAIL=1
+        fi
+        if [ "$FAIL" -eq 1 ]; then
+          echo "Please update both version and appVersion in Chart.yaml in your release PR before merging."
           exit 1
         fi
-        echo "✓ Helm chart version matches release"
+        echo "✓ Helm chart version and appVersion match release"
 
     - name: Create tag and push
       run: |

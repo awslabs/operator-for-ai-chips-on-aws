@@ -16,7 +16,8 @@ NEW_VERSION="1.2.3"
 # Update VERSION file
 echo "$NEW_VERSION" > VERSION
 
-# Update Helm chart appVersion
+# Update Helm chart version and appVersion
+sed -i "s/^version:.*/version: $NEW_VERSION/" deploy/helm/aws-neuron-operator/Chart.yaml
 sed -i "s/^appVersion:.*/appVersion: $NEW_VERSION/" deploy/helm/aws-neuron-operator/Chart.yaml
 
 # Commit and create PR
