@@ -1,18 +1,4 @@
 apiVersion: operators.coreos.com/v1alpha1
-kind: CatalogSource
-metadata:
-  name: aws-neuron-operator
-  namespace: openshift-marketplace
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-spec:
-  sourceType: grpc
-  image: public.ecr.aws/os-partners/neuron-openshift/operator-index:v{{ .Chart.AppVersion }}
-  # 929819487611.dkr.ecr.us-west-2.amazonaws.com/neuron-openshift/operator-index:pr-63-14a17ac
-  # public.ecr.aws/os-partners/neuron-openshift/operator-index:v{{ .Chart.AppVersion }}
-  displayName: AWS Neuron Operator Catalog
----
-apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: aws-neuron-operator
@@ -23,5 +9,5 @@ spec:
   channel: {{ .Values.channel }}
   installPlanApproval: {{ .Values.installPlanApproval }}
   name: aws-neuron-operator
-  source: aws-neuron-operator
+  source: community-operators
   sourceNamespace: openshift-marketplace
