@@ -1,0 +1,9 @@
+namespace: neuron-inference
+model:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  tensorParallelSize: 2
+  maxNumSeqs: 4
+  maxModelLen: 4096
+storage:
+  size: 50Gi
+  storageClassName: gp3-csi

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: rhaiis-neuron-inference
+description: Red Hat AI Inference with vLLM on AWS Neuron
+version: 0.1.0

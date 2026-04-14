@@ -1,0 +1,15 @@
+apiVersion: k8s.aws/v1beta1
+kind: DeviceConfig
+metadata:
+  name: neuron
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:{{ .Values.deviceConfig.driversVersion }}
+  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:{{ .Values.deviceConfig.devicePluginVersion }}
+  customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:{{ .Values.deviceConfig.schedulerVersion }}
+  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:{{ .Values.deviceConfig.schedulerExtensionVersion }}
+  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:{{ .Values.deviceConfig.monitorVersion }}
+  selector:
+    feature.node.kubernetes.io/aws-neuron: "true"

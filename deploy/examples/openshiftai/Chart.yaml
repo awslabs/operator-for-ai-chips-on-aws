@@ -1,0 +1,4 @@
+apiVersion: v2
+name: openshift-ai-for-neuron
+description: OpenShift AI with prerequisites for Neuron inference serving
+version: 0.1.0

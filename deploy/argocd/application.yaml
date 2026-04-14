@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-neuron-operator
+  namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/awslabs/operator-for-ai-chips-on-aws.git
+    targetRevision: main
+    path: deploy/helm/aws-neuron-operator
+    helm:
+      # Override any values.yaml defaults here, e.g.:
+      # parameters:
+      #   - name: nfd.enabled
+      #     value: "false"
+      #   - name: kmm.enabled
+      #     value: "false"
+      #   - name: deviceConfig.devicePluginVersion
+      #     value: "2.30.0.0"
+      #   - name: deviceConfig.monitorVersion
+      #     value: "1.9.0"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aws-neuron-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      - SkipDryRunOnMissingResource=true

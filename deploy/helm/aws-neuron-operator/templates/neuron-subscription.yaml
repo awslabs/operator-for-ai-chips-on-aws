@@ -1,0 +1,13 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: aws-neuron-operator
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  channel: {{ .Values.channel }}
+  installPlanApproval: {{ .Values.installPlanApproval }}
+  name: aws-neuron-operator
+  source: community-operators
+  sourceNamespace: openshift-marketplace
