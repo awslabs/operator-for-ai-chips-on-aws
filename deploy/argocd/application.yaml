@@ -9,7 +9,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/awslabs/operator-for-ai-chips-on-aws.git
-    targetRevision: main
+    targetRevision: v1.1.4
     path: deploy/helm/aws-neuron-operator
     helm:
       # Override any values.yaml defaults here, e.g.:
