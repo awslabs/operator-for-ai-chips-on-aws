@@ -28,9 +28,41 @@ import (
 )
 
 var _ = Describe("SetCustomSchedulerAsDesired", func() {
-	cs := NewCustomScheduler(scheme)
 
-	It("should configure deployment with neuron scheduler settings", func() {
+	It("should configure deployment with neuron scheduler settings, DRA is not supported", func() {
+		cs := NewCustomScheduler(false, scheme)
+		deployment := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "",
+				Namespace: "",
+			},
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Deployment",
+				APIVersion: "apps/v1",
+			},
+		}
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				CustomSchedulerImage: "test-scheduler-image:latest",
+			},
+		}
+
+		expectedYAMLFile, err := os.ReadFile("testdata/custom_scheduler_deployment.yaml")
+		Expect(err).To(BeNil())
+		expectedDeployment := appsv1.Deployment{}
+		expectedJSON, err := yaml.YAMLToJSON(expectedYAMLFile)
+		Expect(err).To(BeNil())
+		err = yaml.Unmarshal(expectedJSON, &expectedDeployment)
+		Expect(err).To(BeNil())
+		expectedDeployment.Spec.Template.Spec.Containers[0].Args = append(expectedDeployment.Spec.Template.Spec.Containers[0].Args,
+			"--feature-gates=DynamicResourceAllocation=false")
+
+		cs.SetCustomSchedulerAsDesired(deployment, devConfig)
+		Expect(*deployment).To(Equal(expectedDeployment))
+	})
+
+	It("should configure deployment with neuron scheduler settings, DRA is supported", func() {
+		cs := NewCustomScheduler(true, scheme)
 		deployment := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "",
@@ -61,7 +93,7 @@ var _ = Describe("SetCustomSchedulerAsDesired", func() {
 })
 
 var _ = Describe("SetCustomSchedulerExtensionAsDesired", func() {
-	cs := NewCustomScheduler(scheme)
+	cs := NewCustomScheduler(false, scheme)
 
 	It("should configure deployment with neuron scheduler extension settings", func() {
 		deployment := &appsv1.Deployment{

@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2/textlogger"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -91,10 +92,23 @@ func main() {
 		cmd.FatalError(setupLogger, err, "unable to create manager")
 	}
 
+	dc, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		cmd.FatalError(setupLogger, err, "failed to create discovery client")
+	}
+	draSupport := true
+	_, err = dc.ServerResourcesForGroupVersion("resource.k8s.io/v1")
+	if err != nil {
+		setupLogger.Info("cluster does not suport DRA")
+		draSupport = false
+	} else {
+		setupLogger.Info("cluster suports DRA")
+	}
+
 	client := mgr.GetClient()
 	kmmHandler := kmmmodule.NewKMMModule(client, scheme)
 	upgradeHandler := upgrade.NewUpgradeAPI(client)
-	csHandler := customscheduler.NewCustomScheduler(scheme)
+	csHandler := customscheduler.NewCustomScheduler(draSupport, scheme)
 	nmHandler := nodemetrics.NewNodeMetrcis(scheme)
 	filter := filter.New(client)
 	dcr := controllers.NewDeviceConfigReconciler(
