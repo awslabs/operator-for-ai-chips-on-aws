@@ -34,12 +34,14 @@ type CustomScheduler interface {
 }
 
 type customScheduler struct {
-	scheme *runtime.Scheme
+	draSupport bool
+	scheme     *runtime.Scheme
 }
 
-func NewCustomScheduler(scheme *runtime.Scheme) CustomScheduler {
+func NewCustomScheduler(draSupport bool, scheme *runtime.Scheme) CustomScheduler {
 	return &customScheduler{
-		scheme: scheme,
+		draSupport: draSupport,
+		scheme:     scheme,
 	}
 }
 
@@ -71,6 +73,15 @@ func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, de
 		"tier":                        "control-plane",
 	}
 
+	csArgs := []string{
+		"--config=/etc/kubernetes/neuron-scheduler/neuron_scheduler_config.yaml",
+		"--leader-elect=true",
+		"--v=2",
+	}
+	if !cs.draSupport {
+		csArgs = append(csArgs, "--feature-gates=DynamicResourceAllocation=false")
+	}
+
 	dp.Spec = appsv1.DeploymentSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: matchLabels},
 		Replicas: ptr.To[int32](1),
@@ -82,13 +93,9 @@ func (cs *customScheduler) SetCustomSchedulerAsDesired(dp *appsv1.Deployment, de
 				ServiceAccountName: "awslabs-gpu-operator-neuron-scheduler",
 				Containers: []corev1.Container{
 					{
-						Name:  "kube-second-scheduler",
-						Image: devConfig.Spec.CustomSchedulerImage,
-						Args: []string{
-							"--config=/etc/kubernetes/neuron-scheduler/neuron_scheduler_config.yaml",
-							"--leader-elect=true",
-							"--v=2",
-						},
+						Name:            "kube-second-scheduler",
+						Image:           devConfig.Spec.CustomSchedulerImage,
+						Args:            csArgs,
 						Command:         []string{"/usr/local/bin/kube-scheduler"},
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						LivenessProbe: &corev1.Probe{
