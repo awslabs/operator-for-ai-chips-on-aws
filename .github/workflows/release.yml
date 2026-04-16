@@ -215,28 +215,20 @@ jobs:
         
         echo "✓ Release manifests generated and validated successfully"
 
-    - name: Validate Helm chart version
+    - name: Update Helm chart and Argo application for release
       run: |
-        echo "Validating Helm chart version matches release..."
+        echo "Updating Helm chart and Argo application to version ${{ env.NEW_VERSION }}..."
+        
+        # Update Helm chart
         CHART_FILE="deploy/helm/aws-neuron-operator/Chart.yaml"
+        sed -i "s/^version:.*/version: ${{ env.NEW_VERSION }}/" "$CHART_FILE"
+        sed -i "s/^appVersion:.*/appVersion: ${{ env.NEW_VERSION }}/" "$CHART_FILE"
+        echo "✓ Helm chart updated"
         
-        CHART_VERSION=$(grep '^version:' "$CHART_FILE" | sed 's/version: *"\?\([^"]*\)"\?/\1/')
-        APP_VERSION=$(grep '^appVersion:' "$CHART_FILE" | sed 's/appVersion: *"\?\([^"]*\)"\?/\1/')
-        
-        FAIL=0
-        if [ "$CHART_VERSION" != "${{ env.NEW_VERSION }}" ]; then
-          echo "Error: Chart.yaml version ($CHART_VERSION) does not match release version (${{ env.NEW_VERSION }})"
-          FAIL=1
-        fi
-        if [ "$APP_VERSION" != "${{ env.NEW_VERSION }}" ]; then
-          echo "Error: Chart.yaml appVersion ($APP_VERSION) does not match release version (${{ env.NEW_VERSION }})"
-          FAIL=1
-        fi
-        if [ "$FAIL" -eq 1 ]; then
-          echo "Please update both version and appVersion in Chart.yaml in your release PR before merging."
-          exit 1
-        fi
-        echo "✓ Helm chart version and appVersion match release"
+        # Pin Argo application to release tag
+        APP_FILE="deploy/argocd/application.yaml"
+        sed -i "s|targetRevision:.*|targetRevision: v${{ env.NEW_VERSION }}|" "$APP_FILE"
+        echo "✓ Argo application pinned to v${{ env.NEW_VERSION }}"
 
     - name: Create tag and push
       run: |
@@ -254,14 +246,18 @@ jobs:
           fi
         fi
         
-        # Create tag (no commit needed — VERSION and Chart.yaml already updated in PR)
+        # Commit release changes (local only — pushed via tag, not branch)
+        git add deploy/helm/aws-neuron-operator/Chart.yaml deploy/argocd/application.yaml
+        git commit -m "Release v${{ env.NEW_VERSION }}: update Chart.yaml and pin Argo application"
+        
+        # Create tag on the release commit
         echo "Creating tag v${{ env.NEW_VERSION }}..."
         if ! git tag "v${{ env.NEW_VERSION }}"; then
           echo "Error: Failed to create tag"
           exit 1
         fi
         
-        # Push tag only (not the branch)
+        # Push tag only (not the branch — commit lives only on the tag)
         echo "Pushing tag..."
         for i in {1..3}; do
           if git push origin "v${{ env.NEW_VERSION }}"; then
