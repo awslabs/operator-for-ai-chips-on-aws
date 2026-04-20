@@ -1,0 +1,67 @@
+{{- if .Values.servingRuntime.enabled }}
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: vllm-neuron-runtime
+  namespace: {{ .Values.servingRuntime.namespace }}
+  annotations:
+    opendatahub.io/recommended-accelerators: '["aws.amazon.com/neuron"]'
+    openshift.io/display-name: "vLLM for AWS Neuron"
+spec:
+  annotations:
+    sidecar.istio.io/inject: "true"
+    serving.knative.openshift.io/enablePassthrough: "true"
+  supportedModelFormats:
+    - name: vllm-neuron
+      version: "1"
+      autoSelect: true
+  containers:
+    - name: kserve-container
+      image: {{ .Values.servingRuntime.image }}
+      command:
+        - python
+        - -m
+        - vllm.entrypoints.openai.api_server
+      args:
+        - --port=8080
+        - --model=/mnt/models
+        - --served-model-name=$(MODEL_NAME)
+        - --tensor-parallel-size={{ .Values.servingRuntime.tensorParallelSize }}
+        - --max-num-seqs={{ .Values.servingRuntime.maxNumSeqs }}
+        - --max-model-len={{ .Values.servingRuntime.maxModelLen }}
+        - --block-size=16
+        - --no-enable-prefix-caching
+        - --no-enable-chunked-prefill
+      env:
+        - name: MODEL_NAME
+          value: {{ .Values.servingRuntime.defaultModelName }}
+        - name: NEURON_CACHE_URL
+          value: /tmp/neuron_cache
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      volumeMounts:
+        - name: shm
+          mountPath: /dev/shm
+        - name: neuron-compile-cache
+          mountPath: /mnt/models/neuron-compiled-artifacts
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 900
+        periodSeconds: 10
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 900
+        periodSeconds: 10
+  volumes:
+    - name: shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 2Gi
+    - name: neuron-compile-cache
+      emptyDir: {}
+{{- end }}
