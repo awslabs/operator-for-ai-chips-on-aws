@@ -12,3 +12,8 @@ servingRuntime:
   tensorParallelSize: 2
   maxNumSeqs: 4
   maxModelLen: 4096
+compileCachePVC:
+  enabled: true
+  name: neuron-compile-cache
+  storageClassName: gp3-csi
+  size: 20Gi
