@@ -1,0 +1,44 @@
+# InferenceService for Llama 3.1 8B on Neuron with compilation cache.
+#
+# Prerequisites:
+#   - OpenShift AI with KServe installed (deploy/examples/openshiftai)
+#   - neuron-inference namespace labeled: oc label namespace neuron-inference istio-injection=enabled
+#   - HF token secret: oc create secret generic hf-token --from-literal=HF_TOKEN=<token> -n neuron-inference
+#   - Service account: oc create sa kserve-neuron-sa -n neuron-inference
+#     then: oc patch sa kserve-neuron-sa -n neuron-inference -p '{"secrets":[{"name":"hf-token"}]}'
+#   - PVC created: oc apply -f pvc.yaml (optional, for compilation caching)
+#
+# Adjust resources and tensor-parallel-size based on your model and instance type.
+# inf2.xlarge: 1 Neuron device (2 cores), inf2.8xlarge: 1 device, inf2.24xlarge: 6 devices, inf2.48xlarge: 12 devices.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: llama31-8b-neuron
+  namespace: neuron-inference
+spec:
+  predictor:
+    serviceAccountName: kserve-neuron-sa
+    model:
+      modelFormat:
+        name: vllm-neuron
+      storageUri: "hf://meta-llama/Llama-3.1-8B-Instruct"
+      runtime: vllm-neuron-runtime
+      resources:
+        limits:
+          aws.amazon.com/neuron: "1"
+          memory: 100Gi
+        requests:
+          aws.amazon.com/neuron: "1"
+          memory: 10Gi
+      env:
+        - name: MODEL_NAME
+          value: meta-llama/Llama-3.1-8B-Instruct
+        - name: NEURON_COMPILE_CACHE_URL
+          value: /mnt/neuron-cache
+      volumeMounts:
+        - name: neuron-sdk-cache
+          mountPath: /mnt/neuron-cache
+    volumes:
+      - name: neuron-sdk-cache
+        persistentVolumeClaim:
+          claimName: neuron-compile-cache
