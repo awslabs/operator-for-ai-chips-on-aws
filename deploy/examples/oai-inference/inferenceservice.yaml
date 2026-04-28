@@ -15,6 +15,9 @@ kind: InferenceService
 metadata:
   name: llama31-8b-neuron
   namespace: neuron-inference
+  annotations:
+    serving.knative.dev/progress-deadline: "1800s"
+
 spec:
   predictor:
     serviceAccountName: kserve-neuron-sa
