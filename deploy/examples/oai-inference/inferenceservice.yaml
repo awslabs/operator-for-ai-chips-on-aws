@@ -15,6 +15,8 @@ kind: InferenceService
 metadata:
   name: llama31-8b-neuron
   namespace: neuron-inference
+  labels:
+    opendatahub.io/dashboard: "true"
   annotations:
     serving.knative.dev/progress-deadline: "1800s"
 

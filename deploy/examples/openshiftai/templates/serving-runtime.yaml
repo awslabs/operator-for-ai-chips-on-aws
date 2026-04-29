@@ -4,9 +4,12 @@ kind: ServingRuntime
 metadata:
   name: vllm-neuron-runtime
   namespace: {{ .Values.servingRuntime.namespace }}
+  labels:
+    opendatahub.io/dashboard: "true"
   annotations:
     opendatahub.io/recommended-accelerators: '["aws.amazon.com/neuron"]'
     openshift.io/display-name: "vLLM for AWS Neuron"
+    opendatahub.io/apiProtocol: REST
 spec:
   annotations:
     sidecar.istio.io/inject: "true"
