@@ -1,0 +1,15 @@
+# Optional: PVC for Neuron compilation cache.
+# Persists compiled NEFFs across pod restarts, reducing cold start from ~30min to ~5min.
+# Remove this if you don't need compilation caching.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neuron-compile-cache
+  namespace: neuron-inference
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 20Gi
