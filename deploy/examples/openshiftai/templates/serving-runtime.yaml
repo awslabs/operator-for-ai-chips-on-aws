@@ -1,4 +1,11 @@
 {{- if .Values.servingRuntime.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.servingRuntime.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
 apiVersion: serving.kserve.io/v1alpha1
 kind: ServingRuntime
 metadata:
@@ -7,6 +14,8 @@ metadata:
   labels:
     opendatahub.io/dashboard: "true"
   annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     opendatahub.io/recommended-accelerators: '["aws.amazon.com/neuron"]'
     openshift.io/display-name: "vLLM for AWS Neuron"
     opendatahub.io/apiProtocol: REST
