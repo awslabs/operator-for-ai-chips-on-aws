@@ -21,5 +21,8 @@ spec:
     operator: "Equal"
     value: "true"
     effect: "NoExecute"
+  - key: "node.kubernetes.io/unschedulable"
+    operator: "Exists"
+    effect: "NoSchedule"
   selector:
     feature.node.kubernetes.io/pci-1d0f.present: "true"
