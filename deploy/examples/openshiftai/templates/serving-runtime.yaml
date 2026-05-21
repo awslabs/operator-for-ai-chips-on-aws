@@ -5,6 +5,8 @@ metadata:
   name: {{ .Values.servingRuntime.namespace }}
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+  labels:
+    argocd.argoproj.io/managed-by: openshift-gitops
 ---
 apiVersion: serving.kserve.io/v1alpha1
 kind: ServingRuntime
