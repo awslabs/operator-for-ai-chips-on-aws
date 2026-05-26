@@ -5,6 +5,8 @@ metadata:
   name: openshift-kmm
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+  labels:
+    argocd.argoproj.io/managed-by: openshift-gitops
 ---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
