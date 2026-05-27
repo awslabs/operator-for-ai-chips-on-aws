@@ -90,6 +90,11 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.Device
 			Operator: v1.TolerationOpEqual,
 			Effect:   v1.TaintEffectNoExecute,
 		},
+		{
+			Key:      v1.TaintNodeUnschedulable,
+			Operator: v1.TolerationOpExists,
+			Effect:   v1.TaintEffectNoSchedule,
+		},
 	}
 	return nil
 }
