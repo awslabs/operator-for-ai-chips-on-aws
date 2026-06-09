@@ -229,6 +229,11 @@ jobs:
         APP_FILE="deploy/argocd/application.yaml"
         sed -i "s|targetRevision:.*|targetRevision: v${{ env.NEW_VERSION }}|" "$APP_FILE"
         echo "✓ Argo application pinned to v${{ env.NEW_VERSION }}"
+        
+        # Update kustomization operator image tag
+        KUSTOMIZE_FILE="config/manager/kustomization.yaml"
+        sed -i "s/newTag:.*/newTag: v${{ env.NEW_VERSION }}/" "$KUSTOMIZE_FILE"
+        echo "✓ Kustomization operator image tag updated"
 
     - name: Create tag and push
       run: |
@@ -247,7 +252,7 @@ jobs:
         fi
         
         # Commit release changes (local only — pushed via tag, not branch)
-        git add deploy/helm/aws-neuron-operator/Chart.yaml deploy/argocd/application.yaml
+        git add deploy/helm/aws-neuron-operator/Chart.yaml deploy/argocd/application.yaml config/manager/kustomization.yaml
         git commit -m "Release v${{ env.NEW_VERSION }}: update Chart.yaml and pin Argo application"
         
         # Create tag on the release commit
