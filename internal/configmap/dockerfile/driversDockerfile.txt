@@ -1,0 +1,42 @@
+ARG DTK_AUTO
+ARG DRIVER_VERSION
+ARG KERNEL_VERSION
+
+FROM ${DTK_AUTO} AS dtk
+
+ARG DRIVER_VERSION
+ARG KERNEL_VERSION
+
+WORKDIR /build
+
+RUN curl -fsSL \
+    "https://yum.repos.neuron.amazonaws.com/aws-neuronx-dkms-${DRIVER_VERSION}.noarch.rpm" \
+    -o aws-neuronx-dkms.rpm \
+    && rpm2cpio aws-neuronx-dkms.rpm | cpio -idmv \
+    && mv "usr/src/aws-neuronx-${DRIVER_VERSION}" /aws-neuron-driver \
+    && rm -rf aws-neuronx-dkms.rpm usr
+
+WORKDIR /aws-neuron-driver
+
+# Patch neuron_cdev.c for RHEL/OpenShift kernel compatibility (same logic as container/build-module.sh)
+RUN set -euo pipefail \
+    && version_lt() { test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" != "$1"; } \
+    && if version_lt "${DRIVER_VERSION}" "2.18.12.0"; then \
+         echo "Patching neuron_cdev.c: KERNEL_VERSION(6,4,0) -> KERNEL_VERSION(5,14,0)..."; \
+         sed -i "s/KERNEL_VERSION(6, 4, 0)/KERNEL_VERSION(5, 14, 0)/g" neuron_cdev.c; \
+       fi \
+    && if ! version_lt "${DRIVER_VERSION}" "2.22.2.0"; then \
+         echo "Patching neuron_cdev.c: RHEL 9.5 check -> RHEL 9.4..."; \
+         sed -i 's/RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(9, 5)/RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(9, 4)/g' neuron_cdev.c; \
+       fi
+
+RUN make -C "/lib/modules/${KERNEL_VERSION}/build" M="$(pwd)" modules \
+    && cp neuron.ko "/lib/modules/${KERNEL_VERSION}/" \
+    && depmod "${KERNEL_VERSION}" \
+    && mkdir -p "/opt/lib/modules/${KERNEL_VERSION}" \
+    && cp neuron.ko "/opt/lib/modules/${KERNEL_VERSION}/" \
+    && cp "/lib/modules/${KERNEL_VERSION}"/modules.* "/opt/lib/modules/${KERNEL_VERSION}/"
+
+FROM public.ecr.aws/docker/library/busybox:stable-musl
+
+COPY --from=dtk /opt/lib/modules/ /opt/lib/modules/

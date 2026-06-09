@@ -18,15 +18,19 @@ package configmap
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 )
 
 const (
@@ -38,6 +42,41 @@ const (
 	kubeletKubeRootCAConfigMapName = "kube-root-kubelet-ca"
 	kubeletKubeRootCAKey           = "ca-bundle.crt"
 )
+
+var (
+	//go:embed dockerfile/driversDockerfile.txt
+	buildDockerfile string
+)
+
+//go:generate mockgen -source=configmap.go -package=configmap -destination=mock_configmap.go ConfigMapAPI
+type ConfigMapAPI interface {
+	SetBuildConfigMapAsDesired(buildCM *corev1.ConfigMap, devConfig *awslabsv1beta1.DeviceConfig) error
+}
+
+type configMap struct {
+	client client.Client
+	scheme *runtime.Scheme
+}
+
+func NewConfigMap(client client.Client, scheme *runtime.Scheme) ConfigMapAPI {
+	return &configMap{
+		client: client,
+		scheme: scheme,
+	}
+}
+
+func (cm *configMap) SetBuildConfigMapAsDesired(buildCM *corev1.ConfigMap, devConfig *awslabsv1beta1.DeviceConfig) error {
+	if buildCM.Data == nil {
+		buildCM.Data = make(map[string]string)
+	}
+
+	buildCM.Data["dockerfile"] = buildDockerfile
+	return controllerutil.SetControllerReference(devConfig, buildCM, cm.scheme)
+}
+
+func GetDockerfileCMName(devConfig *awslabsv1beta1.DeviceConfig) string {
+	return "dockerfile-" + devConfig.Name
+}
 
 // CreateKubeletKubeRootCAConfigMap creates a CA configmap that
 // contain both kube-root CAs and kubelet CAs.
