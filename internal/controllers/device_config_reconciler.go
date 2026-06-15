@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/configmap"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
@@ -56,12 +57,13 @@ type DeviceConfigReconciler struct {
 func NewDeviceConfigReconciler(
 	client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
+	cmHandler configmap.ConfigMapAPI,
 	upgradeHandler upgrade.UpgradeAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
 	filter *filter.Filter,
 	scheme *runtime.Scheme) *DeviceConfigReconciler {
-	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, upgradeHandler, csHandler, nmHandler, scheme)
+	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, cmHandler, upgradeHandler, csHandler, nmHandler, scheme)
 	return &DeviceConfigReconciler{
 		helper: helper,
 		filter: filter,
@@ -113,6 +115,12 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 		return res, fmt.Errorf("failed to set finalizer for DeviceConfig: %v", err)
 	}
 
+	logger.Info("start build configmap reconciliation")
+	err = r.helper.handleBuildConfigMap(ctx, devConfig)
+	if err != nil {
+		return res, fmt.Errorf("failed to handle build ConfigMap for DeviceConfig: %v", err)
+	}
+
 	logger.Info("start KMM reconciliation")
 	err = r.helper.handleKMMModule(ctx, devConfig)
 	if err != nil {
@@ -144,6 +152,7 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 type deviceConfigReconcilerHelperAPI interface {
 	finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	setFinalizer(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	handleBuildConfigMap(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	handleCustomScheduler(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
@@ -153,6 +162,7 @@ type deviceConfigReconcilerHelperAPI interface {
 type deviceConfigReconcilerHelper struct {
 	client         client.Client
 	kmmHandler     kmmmodule.KMMModuleAPI
+	cmHandler      configmap.ConfigMapAPI
 	upgradeHandler upgrade.UpgradeAPI
 	csHandler      customscheduler.CustomScheduler
 	nmHandler      nodemetrics.NodeMetrics
@@ -161,6 +171,7 @@ type deviceConfigReconcilerHelper struct {
 
 func newDeviceConfigReconcilerHelper(client client.Client,
 	kmmHandler kmmmodule.KMMModuleAPI,
+	cmHandler configmap.ConfigMapAPI,
 	upgradeHandler upgrade.UpgradeAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
@@ -168,6 +179,7 @@ func newDeviceConfigReconcilerHelper(client client.Client,
 	return &deviceConfigReconcilerHelper{
 		client:         client,
 		kmmHandler:     kmmHandler,
+		cmHandler:      cmHandler,
 		upgradeHandler: upgradeHandler,
 		csHandler:      csHandler,
 		nmHandler:      nmHandler,
@@ -228,6 +240,26 @@ func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Conte
 	devConfigCopy := devConfig.DeepCopy()
 	controllerutil.RemoveFinalizer(devConfig, deviceConfigFinalizer)
 	return dcrh.client.Patch(ctx, devConfig, client.MergeFrom(devConfigCopy))
+}
+
+func (dcrh *deviceConfigReconcilerHelper) handleBuildConfigMap(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
+	buildDockerfileCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: devConfig.Namespace,
+			Name:      configmap.GetDockerfileCMName(devConfig),
+		},
+	}
+
+	logger := log.FromContext(ctx)
+	opRes, err := controllerutil.CreateOrPatch(ctx, dcrh.client, buildDockerfileCM, func() error {
+		return dcrh.cmHandler.SetBuildConfigMapAsDesired(buildDockerfileCM, devConfig)
+	})
+
+	if err == nil {
+		logger.Info("Reconciled KMM build dockerfile ConfigMap", "name", buildDockerfileCM.Name, "result", opRes)
+	}
+
+	return err
 }
 
 func (dcrh *deviceConfigReconcilerHelper) handleKMMModule(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {

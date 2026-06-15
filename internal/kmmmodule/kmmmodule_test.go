@@ -42,6 +42,10 @@ var _ = Describe("setKMMModuleLoader", func() {
 			},
 		}
 		input := awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
 			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DriversImage: "some image:tag",
 			},
@@ -64,7 +68,7 @@ var _ = Describe("setKMMModuleLoader", func() {
 		err = setKMMModuleLoader(&mod, &input)
 
 		Expect(err).To(BeNil())
-		Expect(mod).To(Equal(expectedMod))
+		Expect(mod).To(BeComparableTo(expectedMod))
 	})
 
 	It("KMM module creation - user input values", func() {
@@ -79,6 +83,10 @@ var _ = Describe("setKMMModuleLoader", func() {
 			},
 		}
 		input := awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
 			Spec: awslabsv1beta1.DeviceConfigSpec{
 				UseInTreeDrivers: false,
 				DriversImage:     "some driver image",
@@ -105,7 +113,7 @@ var _ = Describe("setKMMModuleLoader", func() {
 		err = setKMMModuleLoader(&mod, &input)
 
 		Expect(err).To(BeNil())
-		Expect(mod).To(Equal(expectedMod))
+		Expect(mod).To(BeComparableTo(expectedMod))
 	})
 })
 
@@ -123,6 +131,10 @@ var _ = Describe("setKMMDevicePlugin", func() {
 		}
 
 		input := awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
 			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DevicePluginImage: "some device plugin image",
 			},
@@ -139,7 +151,7 @@ var _ = Describe("setKMMDevicePlugin", func() {
 
 		setKMMDevicePlugin(&mod, &input)
 
-		Expect(mod).To(Equal(expectedMod))
+		Expect(mod).To(BeComparableTo(expectedMod))
 	})
 
 	It("KMM module creation - user input values", func() {

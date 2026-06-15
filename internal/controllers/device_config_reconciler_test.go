@@ -63,6 +63,7 @@ var _ = Describe("Reconcile", func() {
 	ctx := context.Background()
 
 	DescribeTable("reconciler error flow", func(setFinalizerError,
+		handleConfigMapError,
 		handleKMMModuleError,
 		handleModuleVersionUpgradeError,
 		handleCustomSchedulerError,
@@ -73,6 +74,11 @@ var _ = Describe("Reconcile", func() {
 			goto executeTestFunction
 		}
 		mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(nil)
+		if handleConfigMapError {
+			mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(fmt.Errorf("some error"))
+			goto executeTestFunction
+		}
+		mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(nil)
 		if handleKMMModuleError {
 			mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(fmt.Errorf("some error"))
 			goto executeTestFunction
@@ -97,19 +103,21 @@ var _ = Describe("Reconcile", func() {
 	executeTestFunction:
 
 		res, err := dcr.Reconcile(ctx, devConfig)
-		if setFinalizerError || handleKMMModuleError || handleModuleVersionUpgradeError || handleCustomSchedulerError || handleMetricsError {
+		if setFinalizerError || handleConfigMapError || handleKMMModuleError || handleModuleVersionUpgradeError ||
+			handleCustomSchedulerError || handleMetricsError {
 			Expect(err).To(HaveOccurred())
 		} else {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).To(Equal(ctrl.Result{}))
 		}
 	},
-		Entry("good flow, no requeue", false, false, false, false, false),
-		Entry("setFinalizer failed", true, false, false, false, false),
-		Entry("handleKMMModule failed", false, true, false, false, false),
-		Entry("handleModuleVersionUpgrade failed", false, false, true, false, false),
-		Entry("handleCustomScheduler failed", false, false, false, true, false),
-		Entry("handleMetrics failed", false, false, false, false, true),
+		Entry("good flow, no requeue", false, false, false, false, false, false),
+		Entry("setFinalizer failed", true, false, false, false, false, false),
+		Entry("handleBuildConfigMap failed", false, true, false, false, false, false),
+		Entry("handleKMMModule failed", false, false, true, false, false, false),
+		Entry("handleModuleVersionUpgrade failed", false, false, false, true, false, false),
+		Entry("handleCustomScheduler failed", false, false, false, false, true, false),
+		Entry("handleMetrics failed", false, false, false, false, false, true),
 	)
 
 	It("device config finalization", func() {
@@ -140,7 +148,7 @@ var _ = Describe("setFinalizer", func() {
 	BeforeEach(func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -178,7 +186,7 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		upgradeHelper = upgrade.NewMockUpgradeAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, upgradeHelper, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, upgradeHelper, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -240,7 +248,7 @@ var _ = Describe("handleKMMModule", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		kmmHelper = kmmmodule.NewMockKMMModuleAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -301,7 +309,7 @@ var _ = Describe("handleModuleVersionUpgrade", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		upgradeHelper = upgrade.NewMockUpgradeAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, upgradeHelper, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, upgradeHelper, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -378,7 +386,7 @@ var _ = Describe("handleCustomScheduler", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		mockCDHandler = customscheduler.NewMockCustomScheduler(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, mockCDHandler, nil, scheme)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, mockCDHandler, nil, scheme)
 	})
 
 	ctx := context.Background()
@@ -453,7 +461,7 @@ var _ = Describe("handleNodeMetrics", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		nodeMetricsHelper = nodemetrics.NewMockNodeMetrics(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nodeMetricsHelper, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nodeMetricsHelper, nil)
 	})
 
 	ctx := context.Background()

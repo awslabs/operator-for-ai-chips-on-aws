@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/configmap"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	kmmv1beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
 	"k8s.io/utils/ptr"
@@ -62,7 +63,10 @@ func (km *kmmModule) SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *aw
 }
 
 func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.DeviceConfig) error {
-	driversImage := devConfig.Spec.DriversImage + "-$KERNEL_VERSION"
+	driversImage := fmt.Sprintf("image-registry.openshift-image-registry.svc:5000/$MOD_NAMESPACE/neuron-kernel-module:%s-$KERNEL_VERSION", devConfig.Spec.DriverVersion)
+	if devConfig.Spec.DriversImage != "" {
+		driversImage = devConfig.Spec.DriversImage + "-$KERNEL_VERSION"
+	}
 
 	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
 		Container: kmmv1beta1.ModuleLoaderContainerSpec{
@@ -74,6 +78,17 @@ func setKMMModuleLoader(mod *kmmv1beta1.Module, devConfig *awslabsv1beta1.Device
 					Regexp:                "^.+$",
 					ContainerImage:        driversImage,
 					InTreeModulesToRemove: []string{gpuDriverModuleName},
+					Build: &kmmv1beta1.Build{
+						DockerfileConfigMap: &v1.LocalObjectReference{
+							Name: configmap.GetDockerfileCMName(devConfig),
+						},
+						BuildArgs: []kmmv1beta1.BuildArg{
+							{
+								Name:  "DRIVER_VERSION",
+								Value: devConfig.Spec.DriverVersion,
+							},
+						},
+					},
 				},
 			},
 			ImagePullPolicy: v1.PullAlways,

@@ -53,6 +53,20 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) finalizeDeviceConfig(
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "finalizeDeviceConfig", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).finalizeDeviceConfig), ctx, devConfig)
 }
 
+// handleBuildConfigMap mocks base method.
+func (m *MockdeviceConfigReconcilerHelperAPI) handleBuildConfigMap(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "handleBuildConfigMap", ctx, devConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// handleBuildConfigMap indicates an expected call of handleBuildConfigMap.
+func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleBuildConfigMap(ctx, devConfig any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "handleBuildConfigMap", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).handleBuildConfigMap), ctx, devConfig)
+}
+
 // handleCustomScheduler mocks base method.
 func (m *MockdeviceConfigReconcilerHelperAPI) handleCustomScheduler(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()

@@ -107,6 +107,7 @@ func main() {
 
 	client := mgr.GetClient()
 	kmmHandler := kmmmodule.NewKMMModule(client, scheme)
+	cmHandler := configmap.NewConfigMap(client, scheme)
 	upgradeHandler := upgrade.NewUpgradeAPI(client)
 	csHandler := customscheduler.NewCustomScheduler(draSupport, scheme)
 	nmHandler := nodemetrics.NewNodeMetrcis(scheme)
@@ -114,6 +115,7 @@ func main() {
 	dcr := controllers.NewDeviceConfigReconciler(
 		client,
 		kmmHandler,
+		cmHandler,
 		upgradeHandler,
 		csHandler,
 		nmHandler,
