@@ -30,3 +30,5 @@ Dockerfile.cross
 # Local test files
 .local/
 bundle.Dockerfile
+
+.artifacts
