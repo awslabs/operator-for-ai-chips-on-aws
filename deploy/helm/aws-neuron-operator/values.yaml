@@ -11,10 +11,10 @@ namespace: aws-neuron-operator
 channel: Stable
 installPlanApproval: Automatic  # Set to Manual for production
 
-# DeviceConfig image versions (Neuron SDK 2.28.0)
+# DeviceConfig image versions (Neuron SDK 2.30.0)
 deviceConfig:
-  driversVersion: "2.27.4.0"
-  devicePluginVersion: "2.29.148.0"
-  schedulerVersion: "v1.34.4-eks-1-34-16"
-  schedulerExtensionVersion: "2.29.148.0"
-  monitorVersion: "1.9.0"
+  driversVersion: "2.28.0.0"
+  devicePluginVersion: "2.30.0.0"
+  schedulerVersion: "v1.35.5-eks-1-35-10"
+  schedulerExtensionVersion: "2.30.0.0"
+  monitorVersion: "1.10.0"
