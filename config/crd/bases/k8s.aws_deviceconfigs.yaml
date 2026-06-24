@@ -48,6 +48,11 @@ spec:
               devicePluginImage:
                 description: device plugin image
                 type: string
+              draDriverImage:
+                description: |-
+                  DRA driver image. Mutually exclusive with devicePluginImage,
+                  customSchedulerImage, and schedulerExtensionImage.
+                type: string
               driverVersion:
                 description: defines the Version of the neuron drivers. used for rolling
                   upgrade
@@ -85,11 +90,20 @@ spec:
                 description: if the in-tree driver should be used instead of OOT drivers
                 type: boolean
             required:
-            - customSchedulerImage
-            - devicePluginImage
             - nodeMetricsImage
-            - schedulerExtensionImage
             type: object
+            x-kubernetes-validations:
+            - message: draDriverImage is mutually exclusive with devicePluginImage,
+                customSchedulerImage, and schedulerExtensionImage
+              rule: '!(size(self.draDriverImage) > 0 && (size(self.devicePluginImage)
+                > 0 || size(self.customSchedulerImage) > 0 || size(self.schedulerExtensionImage)
+                > 0))'
+            - message: devicePluginImage, customSchedulerImage, and schedulerExtensionImage
+                must all be set together
+              rule: '(size(self.devicePluginImage) > 0 || size(self.customSchedulerImage)
+                > 0 || size(self.schedulerExtensionImage) > 0) ? (size(self.devicePluginImage)
+                > 0 && size(self.customSchedulerImage) > 0 && size(self.schedulerExtensionImage)
+                > 0) : true'
           status:
             description: ModuleStatus defines the observed state of Module.
             properties:

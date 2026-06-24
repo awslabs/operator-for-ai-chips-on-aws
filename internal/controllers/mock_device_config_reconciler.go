@@ -81,6 +81,20 @@ func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleCustomScheduler
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "handleCustomScheduler", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).handleCustomScheduler), ctx, devConfig)
 }
 
+// handleDRADriver mocks base method.
+func (m *MockdeviceConfigReconcilerHelperAPI) handleDRADriver(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "handleDRADriver", ctx, devConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// handleDRADriver indicates an expected call of handleDRADriver.
+func (mr *MockdeviceConfigReconcilerHelperAPIMockRecorder) handleDRADriver(ctx, devConfig any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "handleDRADriver", reflect.TypeOf((*MockdeviceConfigReconcilerHelperAPI)(nil).handleDRADriver), ctx, devConfig)
+}
+
 // handleKMMModule mocks base method.
 func (m *MockdeviceConfigReconcilerHelperAPI) handleKMMModule(ctx context.Context, devConfig *v1beta1.DeviceConfig) error {
 	m.ctrl.T.Helper()

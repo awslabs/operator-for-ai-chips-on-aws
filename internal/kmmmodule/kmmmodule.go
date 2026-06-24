@@ -58,7 +58,9 @@ func (km *kmmModule) SetKMMModuleAsDesired(mod *kmmv1beta1.Module, devConfig *aw
 	if err != nil {
 		return fmt.Errorf("failed to set KMM Module: %v", err)
 	}
-	setKMMDevicePlugin(mod, devConfig)
+	if devConfig.Spec.DevicePluginImage != "" {
+		setKMMDevicePlugin(mod, devConfig)
+	}
 	return controllerutil.SetControllerReference(devConfig, mod, km.scheme)
 }
 
