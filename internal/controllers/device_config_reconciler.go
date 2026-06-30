@@ -23,6 +23,7 @@ import (
 	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/configmap"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/dradriver"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
@@ -61,9 +62,10 @@ func NewDeviceConfigReconciler(
 	upgradeHandler upgrade.UpgradeAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
+	draHandler dradriver.DRADriver,
 	filter *filter.Filter,
 	scheme *runtime.Scheme) *DeviceConfigReconciler {
-	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, cmHandler, upgradeHandler, csHandler, nmHandler, scheme)
+	helper := newDeviceConfigReconcilerHelper(client, kmmHandler, cmHandler, upgradeHandler, csHandler, nmHandler, draHandler, scheme)
 	return &DeviceConfigReconciler{
 		helper: helper,
 		filter: filter,
@@ -133,10 +135,18 @@ func (r *DeviceConfigReconciler) Reconcile(ctx context.Context, devConfig *awsla
 		return res, fmt.Errorf("failed to handle KMM module version upgrade for DeviceConfig: %v", err)
 	}
 
-	logger.Info("start custom scheduler reconciliation")
-	err = r.helper.handleCustomScheduler(ctx, devConfig)
-	if err != nil {
-		return res, fmt.Errorf("failed to handle customScheduler for DeviceConfig: %v", err)
+	if devConfig.Spec.DRADriverImage != "" {
+		logger.Info("start DRA driver reconciliation")
+		err = r.helper.handleDRADriver(ctx, devConfig)
+		if err != nil {
+			return res, fmt.Errorf("failed to handle DRA driver for DeviceConfig: %v", err)
+		}
+	} else {
+		logger.Info("start custom scheduler reconciliation")
+		err = r.helper.handleCustomScheduler(ctx, devConfig)
+		if err != nil {
+			return res, fmt.Errorf("failed to handle customScheduler for DeviceConfig: %v", err)
+		}
 	}
 
 	logger.Info("start metrics reconciliation")
@@ -156,6 +166,7 @@ type deviceConfigReconcilerHelperAPI interface {
 	handleKMMModule(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	handleModuleVersionUpgrade(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	handleCustomScheduler(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
+	handleDRADriver(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 	handleNodeMetrics(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error
 }
 
@@ -166,6 +177,7 @@ type deviceConfigReconcilerHelper struct {
 	upgradeHandler upgrade.UpgradeAPI
 	csHandler      customscheduler.CustomScheduler
 	nmHandler      nodemetrics.NodeMetrics
+	draHandler     dradriver.DRADriver
 	scheme         *runtime.Scheme
 }
 
@@ -175,6 +187,7 @@ func newDeviceConfigReconcilerHelper(client client.Client,
 	upgradeHandler upgrade.UpgradeAPI,
 	csHandler customscheduler.CustomScheduler,
 	nmHandler nodemetrics.NodeMetrics,
+	draHandler dradriver.DRADriver,
 	scheme *runtime.Scheme) deviceConfigReconcilerHelperAPI {
 	return &deviceConfigReconcilerHelper{
 		client:         client,
@@ -183,6 +196,7 @@ func newDeviceConfigReconcilerHelper(client client.Client,
 		upgradeHandler: upgradeHandler,
 		csHandler:      csHandler,
 		nmHandler:      nmHandler,
+		draHandler:     draHandler,
 		scheme:         scheme,
 	}
 }
@@ -200,13 +214,29 @@ func (dcrh *deviceConfigReconcilerHelper) setFinalizer(ctx context.Context, devC
 func (dcrh *deviceConfigReconcilerHelper) finalizeDeviceConfig(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
 	logger := log.FromContext(ctx)
 
-	nmDS := appsv1.DaemonSet{}
+	draDS := appsv1.DaemonSet{}
 	namespacedName := types.NamespacedName{
+		Namespace: devConfig.Namespace,
+		Name:      devConfig.Name + "-dra-driver",
+	}
+
+	err := dcrh.client.Get(ctx, namespacedName, &draDS)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get DRA driver daemonset %s: %v", namespacedName, err)
+		}
+	} else {
+		logger.Info("deleting DRA driver daemonset", "daemonset", namespacedName)
+		return dcrh.client.Delete(ctx, &draDS)
+	}
+
+	nmDS := appsv1.DaemonSet{}
+	namespacedName = types.NamespacedName{
 		Namespace: devConfig.Namespace,
 		Name:      devConfig.Name + "-node-metrics",
 	}
 
-	err := dcrh.client.Get(ctx, namespacedName, &nmDS)
+	err = dcrh.client.Get(ctx, namespacedName, &nmDS)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get nodemetrics daemonset %s: %v", namespacedName, err)
@@ -337,6 +367,22 @@ func (dcrh *deviceConfigReconcilerHelper) handleCustomScheduler(ctx context.Cont
 
 	if err == nil {
 		logger.Info("Reconciled custom scheduler extension", "namespace", cseDep.Namespace, "name", cseDep.Name, "result", opRes)
+	}
+
+	return err
+}
+
+func (dcrh *deviceConfigReconcilerHelper) handleDRADriver(ctx context.Context, devConfig *awslabsv1beta1.DeviceConfig) error {
+	ds := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-dra-driver"},
+	}
+	logger := log.FromContext(ctx)
+	opRes, err := controllerutil.CreateOrPatch(ctx, dcrh.client, ds, func() error {
+		return dcrh.draHandler.SetDRADriverAsDesired(ds, devConfig)
+	})
+
+	if err == nil {
+		logger.Info("Reconciled DRA driver", "namespace", ds.Namespace, "name", ds.Name, "result", opRes)
 	}
 
 	return err

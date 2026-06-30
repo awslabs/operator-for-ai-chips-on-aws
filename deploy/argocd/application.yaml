@@ -14,10 +14,14 @@ spec:
     helm:
       # Override any values.yaml defaults here, e.g.:
       # parameters:
+      #   - name: deviceConfig.mode
+      #     value: "dra"
       #   - name: nfd.enabled
       #     value: "false"
       #   - name: kmm.enabled
       #     value: "false"
+      #   - name: deviceConfig.draDriverVersion
+      #     value: "1.0.1"
       #   - name: deviceConfig.devicePluginVersion
       #     value: "2.30.0.0"
       #   - name: deviceConfig.monitorVersion

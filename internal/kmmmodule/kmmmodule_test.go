@@ -117,6 +117,59 @@ var _ = Describe("setKMMModuleLoader", func() {
 	})
 })
 
+var _ = Describe("SetKMMModuleAsDesired", func() {
+	km := NewKMMModule(nil, scheme)
+
+	It("should skip device plugin when DevicePluginImage is empty (DRA mode)", func() {
+		mod := &kmmv1beta1.Module{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
+		}
+		input := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DriversImage:      "some image:tag",
+				DevicePluginImage: "",
+			},
+		}
+
+		err := km.SetKMMModuleAsDesired(mod, input)
+		Expect(err).To(BeNil())
+		Expect(mod.Spec.ModuleLoader).ToNot(BeNil())
+		Expect(mod.Spec.DevicePlugin).To(BeNil())
+	})
+
+	It("should set device plugin when DevicePluginImage is provided", func() {
+		mod := &kmmv1beta1.Module{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
+		}
+		input := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "moduleName",
+				Namespace: "moduleNamespace",
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DriversImage:      "some image:tag",
+				DevicePluginImage: "some device plugin image",
+			},
+		}
+
+		err := km.SetKMMModuleAsDesired(mod, input)
+		Expect(err).To(BeNil())
+		Expect(mod.Spec.ModuleLoader).ToNot(BeNil())
+		Expect(mod.Spec.DevicePlugin).ToNot(BeNil())
+		Expect(mod.Spec.DevicePlugin.Container.Image).To(Equal("some device plugin image"))
+	})
+})
+
 var _ = Describe("setKMMDevicePlugin", func() {
 	It("KMM module creation - default input values", func() {
 		mod := kmmv1beta1.Module{

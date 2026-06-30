@@ -38,6 +38,7 @@ import (
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/configmap"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/controllers"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/dradriver"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/filter"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
@@ -111,6 +112,7 @@ func main() {
 	upgradeHandler := upgrade.NewUpgradeAPI(client)
 	csHandler := customscheduler.NewCustomScheduler(draSupport, scheme)
 	nmHandler := nodemetrics.NewNodeMetrcis(scheme)
+	draHandler := dradriver.NewDRADriver(scheme)
 	filter := filter.New(client)
 	dcr := controllers.NewDeviceConfigReconciler(
 		client,
@@ -119,6 +121,7 @@ func main() {
 		upgradeHandler,
 		csHandler,
 		nmHandler,
+		draHandler,
 		filter,
 		scheme)
 	if err = dcr.SetupWithManager(mgr); err != nil {

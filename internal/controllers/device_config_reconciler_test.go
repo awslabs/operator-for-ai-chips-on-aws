@@ -23,6 +23,7 @@ import (
 	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	mock_client "github.com/awslabs/operator-for-ai-chips-on-aws/internal/client"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/customscheduler"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/dradriver"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/kmmmodule"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/nodemetrics"
 	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/upgrade"
@@ -62,7 +63,7 @@ var _ = Describe("Reconcile", func() {
 
 	ctx := context.Background()
 
-	DescribeTable("reconciler error flow", func(setFinalizerError,
+	DescribeTable("reconciler legacy mode error flow", func(setFinalizerError,
 		handleConfigMapError,
 		handleKMMModuleError,
 		handleModuleVersionUpgradeError,
@@ -120,6 +121,40 @@ var _ = Describe("Reconcile", func() {
 		Entry("handleMetrics failed", false, false, false, false, false, true),
 	)
 
+	It("DRA mode - good flow calls handleDRADriver, not handleCustomScheduler", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+		mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleDRADriver(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleNodeMetrics(ctx, devConfig).Return(nil)
+
+		res, err := dcr.Reconcile(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
+
+	It("DRA mode - handleDRADriver error propagates", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+		mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleDRADriver(ctx, devConfig).Return(fmt.Errorf("some error"))
+
+		_, err := dcr.Reconcile(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
+	})
+
 	It("device config finalization", func() {
 		devConfig := &awslabsv1beta1.DeviceConfig{}
 		devConfig.SetDeletionTimestamp(&metav1.Time{})
@@ -148,7 +183,7 @@ var _ = Describe("setFinalizer", func() {
 	BeforeEach(func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -186,7 +221,7 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		upgradeHelper = upgrade.NewMockUpgradeAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, upgradeHelper, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, upgradeHelper, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -195,6 +230,11 @@ var _ = Describe("finalizeDeviceConfig", func() {
 			Name:      devConfigName,
 			Namespace: devConfigNamespace,
 		},
+	}
+
+	draDSNN := types.NamespacedName{
+		Name:      devConfigName + "-dra-driver",
+		Namespace: devConfigNamespace,
 	}
 
 	metricsNN := types.NamespacedName{
@@ -207,9 +247,15 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		Namespace: devConfigNamespace,
 	}
 
-	DescribeTable("finalizer good flow", func(nodeMetricsDSExists,
+	DescribeTable("finalizer good flow", func(draDSExists, nodeMetricsDSExists,
 		kmmModuleExists bool) {
 		expectedDevConfig := devConfig.DeepCopy()
+		if draDSExists {
+			kubeClient.EXPECT().Get(ctx, draDSNN, gomock.Any()).Return(nil)
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
+			goto executeTestFunction
+		}
+		kubeClient.EXPECT().Get(ctx, draDSNN, gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "draDSName"))
 		if nodeMetricsDSExists {
 			kubeClient.EXPECT().Get(ctx, metricsNN, gomock.Any()).Return(nil)
 			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
@@ -231,9 +277,10 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
 	},
-		Entry("node metrics daemonset exists", true, false),
-		Entry("kmm module exists", false, true),
-		Entry("node metrics daemonset and kmm module do not exist", false, false),
+		Entry("DRA driver daemonset exists", true, false, false),
+		Entry("node metrics daemonset exists", false, true, false),
+		Entry("kmm module exists", false, false, true),
+		Entry("nothing exists", false, false, false),
 	)
 })
 
@@ -248,7 +295,7 @@ var _ = Describe("handleKMMModule", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		kmmHelper = kmmmodule.NewMockKMMModuleAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, kmmHelper, nil, nil, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -309,7 +356,7 @@ var _ = Describe("handleModuleVersionUpgrade", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		upgradeHelper = upgrade.NewMockUpgradeAPI(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, upgradeHelper, nil, nil, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, upgradeHelper, nil, nil, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -386,7 +433,7 @@ var _ = Describe("handleCustomScheduler", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		mockCDHandler = customscheduler.NewMockCustomScheduler(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, mockCDHandler, nil, scheme)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, mockCDHandler, nil, nil, scheme)
 	})
 
 	ctx := context.Background()
@@ -461,7 +508,7 @@ var _ = Describe("handleNodeMetrics", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		kubeClient = mock_client.NewMockClient(ctrl)
 		nodeMetricsHelper = nodemetrics.NewMockNodeMetrics(ctrl)
-		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nodeMetricsHelper, nil)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nodeMetricsHelper, nil, nil)
 	})
 
 	ctx := context.Background()
@@ -503,6 +550,66 @@ var _ = Describe("handleNodeMetrics", func() {
 		)
 
 		err := dcrh.handleNodeMetrics(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = Describe("handleDRADriver", func() {
+	var (
+		kubeClient *mock_client.MockClient
+		draHelper  *dradriver.MockDRADriver
+		dcrh       deviceConfigReconcilerHelperAPI
+	)
+
+	BeforeEach(func() {
+		ctrl := gomock.NewController(GinkgoT())
+		kubeClient = mock_client.NewMockClient(ctrl)
+		draHelper = dradriver.NewMockDRADriver(ctrl)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil, draHelper, nil)
+	})
+
+	ctx := context.Background()
+	devConfig := &awslabsv1beta1.DeviceConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      devConfigName,
+			Namespace: devConfigNamespace,
+		},
+		Spec: awslabsv1beta1.DeviceConfigSpec{
+			DRADriverImage: "some-dra-image:latest",
+		},
+	}
+
+	It("DRA Driver DaemonSet does not exist", func() {
+		newDS := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-dra-driver"},
+		}
+
+		gomock.InOrder(
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "whatever")),
+			draHelper.EXPECT().SetDRADriverAsDesired(newDS, devConfig).Return(nil),
+			kubeClient.EXPECT().Create(ctx, gomock.Any()).Return(nil),
+		)
+
+		err := dcrh.handleDRADriver(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("DRA Driver DaemonSet exists", func() {
+		existingDS := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Namespace: devConfig.Namespace, Name: devConfig.Name + "-dra-driver"},
+		}
+
+		gomock.InOrder(
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Do(
+				func(_ interface{}, _ interface{}, ds *appsv1.DaemonSet, _ ...client.GetOption) {
+					ds.Name = devConfig.Name + "-dra-driver"
+					ds.Namespace = devConfig.Namespace
+				},
+			),
+			draHelper.EXPECT().SetDRADriverAsDesired(existingDS, devConfig).Return(nil),
+		)
+
+		err := dcrh.handleDRADriver(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
