@@ -45,6 +45,131 @@ spec:
               customSchedulerImage:
                 description: custom scheduler image
                 type: string
+              deviceClasses:
+                description: |-
+                  DeviceClasses lists DeviceClass resources to manage.
+                  When set, the operator creates DeviceClasses using these definitions.
+                  When empty, a default DeviceClass "neuron.aws.com" is created.
+                items:
+                  description: DeviceClassSpec defines a DeviceClass managed by the
+                    operator on behalf of a DeviceConfig.
+                  properties:
+                    config:
+                      description: Config defines per-device configuration passed
+                        to the DRA driver.
+                      items:
+                        description: DeviceClassConfiguration is used in DeviceClass.
+                        properties:
+                          opaque:
+                            description: Opaque provides driver-specific configuration
+                              parameters.
+                            properties:
+                              driver:
+                                description: |-
+                                  Driver is used to determine which kubelet plugin needs
+                                  to be passed these configuration parameters.
+
+                                  An admission policy provided by the driver developer could use this
+                                  to decide whether it needs to validate them.
+
+                                  Must be a DNS subdomain and should end with a DNS domain owned by the
+                                  vendor of the driver. It should use only lower case characters.
+                                type: string
+                              parameters:
+                                description: |-
+                                  Parameters can contain arbitrary data. It is the responsibility of
+                                  the driver developer to handle validation and versioning. Typically this
+                                  includes self-identification and a version ("kind" + "apiVersion" for
+                                  Kubernetes types), with conversion between different versions.
+
+                                  The length of the raw data must be smaller or equal to 10 Ki.
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+                            required:
+                            - driver
+                            - parameters
+                            type: object
+                        type: object
+                      maxItems: 32
+                      type: array
+                    name:
+                      description: Name is the cluster-scoped DeviceClass metadata.name.
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    selectors:
+                      description: Selectors restrict which devices satisfy this class.
+                      items:
+                        description: DeviceSelector must have exactly one field set.
+                        properties:
+                          cel:
+                            description: CEL contains a CEL expression for selecting
+                              a device.
+                            properties:
+                              expression:
+                                description: |-
+                                  Expression is a CEL expression which evaluates a single device. It
+                                  must evaluate to true when the device under consideration satisfies
+                                  the desired criteria, and false when it does not. Any other result
+                                  is an error and causes allocation of devices to abort.
+
+                                  The expression's input is an object named "device", which carries
+                                  the following properties:
+                                   - driver (string): the name of the driver which defines this device.
+                                   - attributes (map[string]object): the device's attributes, grouped by prefix
+                                     (e.g. device.attributes["dra.example.com"] evaluates to an object with all
+                                     of the attributes which were prefixed by "dra.example.com".
+                                   - capacity (map[string]object): the device's capacities, grouped by prefix.
+                                   - allowMultipleAllocations (bool): the allowMultipleAllocations property of the device
+                                     (v1.34+ with the DRAConsumableCapacity feature enabled).
+
+                                  Example: Consider a device with driver="dra.example.com", which exposes
+                                  two attributes named "model" and "ext.example.com/family" and which
+                                  exposes one capacity named "modules". This input to this expression
+                                  would have the following fields:
+
+                                      device.driver
+                                      device.attributes["dra.example.com"].model
+                                      device.attributes["ext.example.com"].family
+                                      device.capacity["dra.example.com"].modules
+
+                                  The device.driver field can be used to check for a specific driver,
+                                  either as a high-level precondition (i.e. you only want to consider
+                                  devices from this driver) or as part of a multi-clause expression
+                                  that is meant to consider devices from different drivers.
+
+                                  The value type of each attribute is defined by the device
+                                  definition, and users who write these expressions must consult the
+                                  documentation for their specific drivers. The value type of each
+                                  capacity is Quantity.
+
+                                  If an unknown prefix is used as a lookup in either device.attributes
+                                  or device.capacity, an empty map will be returned. Any reference to
+                                  an unknown field will cause an evaluation error and allocation to
+                                  abort.
+
+                                  A robust expression should check for the existence of attributes
+                                  before referencing them.
+
+                                  For ease of use, the cel.bind() function is enabled, and can be used
+                                  to simplify expressions that access multiple attributes with the
+                                  same domain. For example:
+
+                                      cel.bind(dra, device.attributes["dra.example.com"], dra.someBool && dra.anotherBool)
+
+                                  The length of the expression must be smaller or equal to 10 Ki. The
+                                  cost of evaluating it is also limited based on the estimated number
+                                  of logical steps.
+                                type: string
+                            required:
+                            - expression
+                            type: object
+                        type: object
+                      maxItems: 32
+                      type: array
+                  required:
+                  - name
+                  type: object
+                type: array
               devicePluginImage:
                 description: device plugin image
                 type: string
