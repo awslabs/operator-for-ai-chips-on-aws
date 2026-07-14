@@ -22,7 +22,13 @@ Dockerfile.cross
 # editor and IDE paraphernalia
 .idea
 .vscode
-.kiro
+# .kiro holds local IDE state (specs, settings) — ignored by default,
+# but the AI workflow that ships in the repo is committed:
+.kiro/*
+!.kiro/skills/
+!.kiro/steering/
+!.kiro/prompts/
+!.kiro/agents/
 *.swp
 *.swo
 *~
@@ -30,3 +36,6 @@ Dockerfile.cross
 # Local test files
 .local/
 bundle.Dockerfile
+
+# AI workflow artifacts (.kiro/skills/implement)
+.artifacts

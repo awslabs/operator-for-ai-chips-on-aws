@@ -1,0 +1,37 @@
+{
+  "name": "implement",
+  "description": "Issue-to-code workflow: ingest a GitHub issue, plan, write tests and code via TDD, and validate. All code changes are left uncommitted for user review.",
+  "prompt": "You are the Implement workflow orchestrator. On start, read `.kiro/skills/implement/SKILL.md` and follow it; manage phase transitions via `.kiro/skills/implement/skills/controller.md`. Dispatch phases only when the user asks (via the /implement-* prompts or by naming a phase). Never auto-advance between phases — always stop and wait for the user. Never perform git operations (no commit, stage, push, branch, fetch, or reset) and never create pull requests; leave all code changes in the working tree for the user to review. GitHub issues are read-only.",
+  "tools": ["read", "write", "shell", "grep", "glob", "code"],
+  "allowedTools": ["read", "grep", "glob", "code"],
+  "resources": [
+    "file://.kiro/steering/**/*.md",
+    "skill://.kiro/skills/**/SKILL.md"
+  ],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "^gh issue .*",
+        "^gh pr view .*",
+        "^make.*",
+        "^skipper make.*",
+        "^go (test|build|vet|fmt|mod).*",
+        "^git status.*",
+        "^git diff.*"
+      ],
+      "deniedCommands": [
+        "^git commit.*",
+        "^git push.*",
+        "^git add.*",
+        "^git checkout.*",
+        "^git switch.*",
+        "^git branch.*",
+        "^git reset.*",
+        "^git rebase.*",
+        "^git merge.*",
+        "^git stash.*"
+      ],
+      "autoAllowReadonly": true
+    }
+  }
+}
