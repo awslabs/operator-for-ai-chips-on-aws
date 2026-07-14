@@ -41,6 +41,23 @@ This operator is supported on:
 - Deploy overlay: `config/default` (includes CRDs, RBAC, manager, NFD rule)
 
 
+### AI-assisted development (Kiro)
+
+This repo ships an `implement` AI workflow for [Kiro](https://kiro.dev) under
+`.kiro/`. It takes a GitHub issue through plan → test-driven code → validation
+(with a self-review gate), leaving all changes uncommitted for you to review.
+No installer — the files are picked up automatically when you run `kiro-cli
+chat` from the repo root:
+
+```bash
+@implement-ingest https://github.com/awslabs/operator-for-ai-chips-on-aws/issues/<N>
+@implement-plan      # →  @implement-code  →  @implement-validate
+```
+
+Or switch to the bundled agent first with `/agent implement`. For the full
+phase, artifact, and design reference, see
+[`.kiro/skills/implement/README.md`](.kiro/skills/implement/README.md).
+
 ### Build the manager image
 Currently we are supporting building the image for linux amd64 architecture only.
 By default the image is `ghcr.io/awslabs/operator-for-ai-chips-on-aws/operator:latest`. Override `IMG` to your registry.
