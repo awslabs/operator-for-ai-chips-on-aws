@@ -110,6 +110,14 @@ The workflow does not commit, push, fetch, create branches, or create PRs. It wo
 
 `02-plan.md` is updated during `/code` as tasks are completed. On re-invocation (e.g., after context limits or interruptions), the plan shows which tasks are done and which remain.
 
+### Self-Review Gate
+
+Before `/code` presents its changes, it runs a self-review gate
+(`.kiro/skills/_shared/recipes/self-review-gate.md`) that reviews the diff
+against the shared review protocol (`.kiro/skills/_shared/review-protocol.md`)
+— spawning a subagent for independence when the runtime supports it. It fixes
+high-value findings before handing off to `/validate` and external review.
+
 ## Directory Structure
 
 ```text

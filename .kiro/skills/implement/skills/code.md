@@ -141,6 +141,26 @@ errors only in files you did not modify, the errors are pre-existing —
 note them in the implementation report (Discoveries section) and do not
 fix them.
 
+### Step 4b: Self-Review Gate
+
+Before presenting the changes, run the self-review gate to catch issues a
+fresh reviewer would see. Read
+`.kiro/skills/_shared/recipes/self-review-gate.md` and follow it; it uses the
+evaluation criteria in `.kiro/skills/_shared/review-protocol.md`.
+
+- Use `DIFF_COMMAND = git diff HEAD` (read-only — the gate performs no git
+  operations). Because `/code` leaves changes uncommitted and may create new
+  files, also include untracked files in the review scope
+  (`git ls-files --others --exclude-standard`).
+- Pass `CONTEXT_FILES = .artifacts/implement/{issue-id}/02-plan.md` so the
+  reviewer has the intended design.
+- If the runtime supports subagents, spawn the review in a subagent for
+  independence; otherwise review inline from a reviewer's perspective.
+- Fix findings that add real value (re-running affected tests), and record
+  the gate outcome in the implementation report.
+
+The gate makes code changes only — it never commits or pushes.
+
 ### Step 5: Diagnostic Failure Routing
 
 When tests fail, diagnose **where** the problem is before fixing:
@@ -218,6 +238,12 @@ After all tasks are complete (or if interrupted), write:
  issue but may be relevant to the team. E.g., adjacent bugs, tech debt,
  missing test coverage in existing code.
  If none: "No notable discoveries."}
+
+## Self-Review Gate
+
+{Findings after validation, how many were fixed vs dismissed (with brief
+ rationale), number of review rounds, and the gate verdict (PASS/FLAG). If
+ FLAG, list the unresolved CRITICAL/HIGH findings.}
 
 ## Status
 
