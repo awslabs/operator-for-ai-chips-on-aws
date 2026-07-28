@@ -43,7 +43,13 @@ This operator is supported on:
 
 ### AI-assisted development (Kiro)
 
-This repo ships an `implement` AI workflow for [Kiro](https://kiro.dev) under
+[Kiro](https://kiro.dev) is an AI development tool from AWS. This workflow uses
+its command-line agent, `kiro-cli`. If you don't have it yet, grab it from the
+[Kiro downloads page](https://kiro.dev/downloads/) (see the
+[CLI install guide](https://docs.kiro.dev/cli/installation/) for details), then
+sign in once with `kiro-cli login`.
+
+This repo ships an `implement` AI workflow for Kiro under
 `.kiro/`. It takes a GitHub issue through plan → test-driven code → validation
 (with a self-review gate), leaving all changes uncommitted for you to review.
 No installer — the files are picked up automatically when you run `kiro-cli
