@@ -149,21 +149,35 @@ This workflow is Kiro-native — there is no installer. The files live under
 
 - **Rules** load from `.kiro/steering/` (always in context for the default agent).
 - **Skills** load on demand from `.kiro/skills/` via their `SKILL.md`.
-- **Phase commands** are prompts under `.kiro/prompts/` — invoke them with
-  `@implement-<phase>` or `/prompts implement-<phase>`.
+- **Phase commands** are prompts under `.kiro/prompts/`.
 
-Two ways to run it from the repo root:
+From the repo root, start a session (optionally on the bundled agent, which
+also blocks git writes so changes stay uncommitted):
 
-1. **Dedicated agent + natural language (recommended):** switch to the bundled
-   agent with `/agent implement` (or launch `kiro-cli chat --agent implement`),
-   then just say what you want with the issue in your message, e.g.
-   `ingest https://github.com/owner/repo/issues/65`. The agent loads this skill
-   and drives the phases (ingest → plan → code → validate → respond).
-2. **Prompt shortcuts:** `@implement-<phase>` (or `/prompts implement-<phase>`)
-   injects the phase instruction. Note: on Kiro, text typed *after* `@`-prompts
-   is not forwarded to the agent, so `@implement-ingest <url>` will not receive
-   the URL — the prompt will ask you for the issue instead. State the issue in
-   your message (option 1) to avoid the extra round-trip.
+```bash
+kiro-cli chat --agent implement    # or: kiro-cli chat, then /agent implement
+```
 
-Typical flow (natural language to the `implement` agent): "ingest issue \<url\>"
-→ "plan" → ("revise: \<feedback\>") → "code" → "validate" → ("respond: \<comments\>").
+### Running the workflow
+
+Every phase is a slash command — type `/` to discover them:
+
+```
+/implement            entry point — asks what you want to do
+/implement-ingest     fetch a GitHub issue and build context
+/implement-plan       design the implementation + test strategy
+/implement-code       write tests and code via TDD (uncommitted)
+/implement-validate   run unit tests
+/implement-revise     adjust the plan
+/implement-respond    address review comments
+```
+
+These commands take **no arguments**. After you run one, it **asks for whatever
+it needs** — for example, `/implement-ingest` asks for the GitHub issue URL or
+number, then proceeds. (Kiro does not forward text typed on the same line as a
+prompt, so there's nothing to pass; just run the command and answer its
+prompt.) If you prefer, you can also drive it in natural language on the
+`implement` agent, e.g. `ingest https://github.com/owner/repo/issues/65`.
+
+Typical flow: `/implement-ingest` → `/implement-plan` → (`/implement-revise`) →
+`/implement-code` → `/implement-validate` → (`/implement-respond`).

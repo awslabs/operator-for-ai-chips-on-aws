@@ -5,9 +5,10 @@ description: >-
   writes contract-based tests and production code via TDD, and runs unit
   tests to validate. Code changes are left uncommitted for user review.
   Use when implementing GitHub issues.
-  Drive it by talking to the bundled `implement` agent in natural language
-  with the issue in your message (e.g. "ingest issue <url>"); the /implement-*
-  prompts are optional shortcuts.
+  Run it via slash commands (/implement, /implement-ingest, /implement-plan,
+  /implement-code, /implement-validate, /implement-revise, /implement-respond)
+  or by talking to the bundled `implement` agent. Commands take no arguments —
+  each asks for what it needs (e.g. the GitHub issue) after you run it.
 ---
 # Implement Workflow Orchestrator
 
