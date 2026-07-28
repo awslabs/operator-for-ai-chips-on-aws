@@ -52,16 +52,22 @@ sign in once with `kiro-cli login`.
 This repo ships an `implement` AI workflow for Kiro under
 `.kiro/`. It takes a GitHub issue through plan → test-driven code → validation
 (with a self-review gate), leaving all changes uncommitted for you to review.
-No installer — the files are picked up automatically when you run `kiro-cli
-chat` from the repo root:
+No installer — the files are picked up automatically. From the repo root:
 
 ```bash
-@implement-ingest https://github.com/awslabs/operator-for-ai-chips-on-aws/issues/<N>
-@implement-plan      # →  @implement-code  →  @implement-validate
+kiro-cli chat --agent implement   # or: kiro-cli chat, then /agent implement
 ```
 
-Or switch to the bundled agent first with `/agent implement`. For the full
-phase, artifact, and design reference, see
+Then run the workflow with slash commands (type `/` to discover them). They
+take **no arguments** — each command asks for what it needs after you run it
+(e.g. `/implement-ingest` asks for the GitHub issue URL or number):
+
+```
+/implement            # entry point — asks what you want to do
+/implement-ingest     # →  /implement-plan  →  /implement-code  →  /implement-validate
+```
+
+For the full phase, artifact, and design reference, see
 [`.kiro/skills/implement/README.md`](.kiro/skills/implement/README.md).
 
 ### Build the manager image
