@@ -1,9 +1,11 @@
 ---
 description: "Address user review comments and apply code changes"
 ---
-# /implement-respond
+# implement · respond
 
-Read `.kiro/skills/implement/skills/controller.md` and follow it.
+Read `.kiro/skills/implement/skills/controller.md` and follow it; dispatch the
+**respond** phase for the current issue
+(`.artifacts/implement/<issue-id>/`).
 
-Dispatch the **respond** phase. Treat anything provided after the command as
-the review comments to address.
+Use the review comments in the current message. If none are present, ask me to
+paste the review comments before proceeding.

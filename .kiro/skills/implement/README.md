@@ -154,12 +154,16 @@ This workflow is Kiro-native — there is no installer. The files live under
 
 Two ways to run it from the repo root:
 
-1. **Default agent + prompts:** start `kiro-cli chat` and invoke a phase, e.g.
-   `@implement-ingest https://github.com/owner/repo/issues/65`.
-2. **Dedicated agent:** switch to the bundled agent with `/agent implement`
-   (it wires in the steering rules and this skill), then invoke phases the
-   same way.
+1. **Dedicated agent + natural language (recommended):** switch to the bundled
+   agent with `/agent implement` (or launch `kiro-cli chat --agent implement`),
+   then just say what you want with the issue in your message, e.g.
+   `ingest https://github.com/owner/repo/issues/65`. The agent loads this skill
+   and drives the phases (ingest → plan → code → validate → respond).
+2. **Prompt shortcuts:** `@implement-<phase>` (or `/prompts implement-<phase>`)
+   injects the phase instruction. Note: on Kiro, text typed *after* `@`-prompts
+   is not forwarded to the agent, so `@implement-ingest <url>` will not receive
+   the URL — the prompt will ask you for the issue instead. State the issue in
+   your message (option 1) to avoid the extra round-trip.
 
-Typical flow: `@implement-ingest <issue-url>` → `@implement-plan` →
-(`@implement-revise`) → `@implement-code` → `@implement-validate` →
-(`@implement-respond`).
+Typical flow (natural language to the `implement` agent): "ingest issue \<url\>"
+→ "plan" → ("revise: \<feedback\>") → "code" → "validate" → ("respond: \<comments\>").
