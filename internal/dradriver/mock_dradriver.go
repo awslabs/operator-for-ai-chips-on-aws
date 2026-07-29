@@ -14,6 +14,7 @@ import (
 	v1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
 	gomock "go.uber.org/mock/gomock"
 	v1 "k8s.io/api/apps/v1"
+	v10 "k8s.io/api/resource/v1"
 )
 
 // MockDRADriver is a mock of DRADriver interface.
@@ -51,4 +52,18 @@ func (m *MockDRADriver) SetDRADriverAsDesired(ds *v1.DaemonSet, devConfig *v1bet
 func (mr *MockDRADriverMockRecorder) SetDRADriverAsDesired(ds, devConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDRADriverAsDesired", reflect.TypeOf((*MockDRADriver)(nil).SetDRADriverAsDesired), ds, devConfig)
+}
+
+// SetDeviceClassAsDesired mocks base method.
+func (m *MockDRADriver) SetDeviceClassAsDesired(dc *v10.DeviceClass, devConfig *v1beta1.DeviceConfig, spec *v1beta1.DeviceClassSpec) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetDeviceClassAsDesired", dc, devConfig, spec)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetDeviceClassAsDesired indicates an expected call of SetDeviceClassAsDesired.
+func (mr *MockDRADriverMockRecorder) SetDeviceClassAsDesired(dc, devConfig, spec any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDeviceClassAsDesired", reflect.TypeOf((*MockDRADriver)(nil).SetDeviceClassAsDesired), dc, devConfig, spec)
 }

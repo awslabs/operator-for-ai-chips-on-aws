@@ -73,3 +73,14 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - resource.k8s.io
+  resources:
+  - deviceclasses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch

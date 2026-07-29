@@ -37,5 +37,4 @@ Dockerfile.cross
 .local/
 bundle.Dockerfile
 
-# AI workflow artifacts (.kiro/skills/implement)
 .artifacts

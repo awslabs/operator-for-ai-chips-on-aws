@@ -17,12 +17,12 @@ limitations under the License.
 package dradriver
 
 import (
-	"fmt"
-
 	awslabsv1beta1 "github.com/awslabs/operator-for-ai-chips-on-aws/api/v1beta1"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	"github.com/rh-ecosystem-edge/kernel-module-management/pkg/labels"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,6 +38,7 @@ const (
 //go:generate mockgen -source=dradriver.go -package=dradriver -destination=mock_dradriver.go DRADriver
 type DRADriver interface {
 	SetDRADriverAsDesired(ds *appsv1.DaemonSet, devConfig *awslabsv1beta1.DeviceConfig) error
+	SetDeviceClassAsDesired(dc *resourcev1.DeviceClass, devConfig *awslabsv1beta1.DeviceConfig, spec *awslabsv1beta1.DeviceClassSpec) error
 }
 
 type draDriver struct {
@@ -51,10 +52,6 @@ func NewDRADriver(scheme *runtime.Scheme) DRADriver {
 }
 
 func (d *draDriver) SetDRADriverAsDesired(ds *appsv1.DaemonSet, devConfig *awslabsv1beta1.DeviceConfig) error {
-	if ds == nil {
-		return fmt.Errorf("daemon set is not initialized, zero pointer")
-	}
-
 	matchLabels := map[string]string{
 		"app.kubernetes.io/name":      "neuron-dra-driver",
 		"app.kubernetes.io/component": "aws-neuron",
@@ -93,6 +90,35 @@ func (d *draDriver) SetDRADriverAsDesired(ds *appsv1.DaemonSet, devConfig *awsla
 	}
 
 	return controllerutil.SetControllerReference(devConfig, ds, d.scheme)
+}
+
+func (d *draDriver) SetDeviceClassAsDesired(dc *resourcev1.DeviceClass, devConfig *awslabsv1beta1.DeviceConfig, spec *awslabsv1beta1.DeviceClassSpec) error {
+	dc.Labels = map[string]string{
+		"app.kubernetes.io/name":             "neuron-dra-driver",
+		"app.kubernetes.io/component":        "aws-neuron",
+		"app.kubernetes.io/part-of":          "aws-neuron",
+		constants.DeviceConfigNameLabel:      devConfig.Name,
+		constants.DeviceConfigNamespaceLabel: devConfig.Namespace,
+	}
+
+	if spec != nil {
+		dc.Spec = resourcev1.DeviceClassSpec{
+			Selectors: spec.Selectors,
+			Config:    spec.Config,
+		}
+	} else {
+		dc.Spec = resourcev1.DeviceClassSpec{
+			Selectors: []resourcev1.DeviceSelector{
+				{
+					CEL: &resourcev1.CELDeviceSelector{
+						Expression: "device.driver == \"neuron.aws.com\"",
+					},
+				},
+			},
+		}
+	}
+
+	return nil
 }
 
 func getEnvVars() []v1.EnvVar {

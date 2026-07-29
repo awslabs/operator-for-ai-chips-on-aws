@@ -33,6 +33,7 @@ import (
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -121,7 +122,7 @@ var _ = Describe("Reconcile", func() {
 		Entry("handleMetrics failed", false, false, false, false, false, true),
 	)
 
-	It("DRA mode - good flow calls handleDRADriver, not handleCustomScheduler", func() {
+	It("DRA mode - good flow calls handleDRADriver and handleDeviceClass, not handleCustomScheduler", func() {
 		devConfig := &awslabsv1beta1.DeviceConfig{
 			Spec: awslabsv1beta1.DeviceConfigSpec{
 				DRADriverImage: "some-dra-image:latest",
@@ -132,6 +133,7 @@ var _ = Describe("Reconcile", func() {
 		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
 		mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(nil)
 		mockHelper.EXPECT().handleDRADriver(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleDeviceClass(ctx, devConfig).Return(nil)
 		mockHelper.EXPECT().handleNodeMetrics(ctx, devConfig).Return(nil)
 
 		res, err := dcr.Reconcile(ctx, devConfig)
@@ -150,6 +152,23 @@ var _ = Describe("Reconcile", func() {
 		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
 		mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(nil)
 		mockHelper.EXPECT().handleDRADriver(ctx, devConfig).Return(fmt.Errorf("some error"))
+
+		_, err := dcr.Reconcile(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("DRA mode - handleDeviceClass error propagates", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+		mockHelper.EXPECT().setFinalizer(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleBuildConfigMap(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleKMMModule(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleModuleVersionUpgrade(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleDRADriver(ctx, devConfig).Return(nil)
+		mockHelper.EXPECT().handleDeviceClass(ctx, devConfig).Return(fmt.Errorf("some error"))
 
 		_, err := dcr.Reconcile(ctx, devConfig)
 		Expect(err).To(HaveOccurred())
@@ -247,9 +266,27 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		Namespace: devConfigNamespace,
 	}
 
-	DescribeTable("finalizer good flow", func(draDSExists, nodeMetricsDSExists,
+	expectOwnedDeviceClasses := func(items ...resourcev1.DeviceClass) {
+		kubeClient.EXPECT().List(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+				dcList := list.(*resourcev1.DeviceClassList)
+				dcList.Items = items
+				return nil
+			},
+		)
+	}
+
+	DescribeTable("finalizer good flow", func(deviceClassExists, draDSExists, nodeMetricsDSExists,
 		kmmModuleExists bool) {
 		expectedDevConfig := devConfig.DeepCopy()
+		if deviceClassExists {
+			expectOwnedDeviceClasses(resourcev1.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "neuron.aws.com"},
+			})
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
+			goto executeTestFunction
+		}
+		expectOwnedDeviceClasses()
 		if draDSExists {
 			kubeClient.EXPECT().Get(ctx, draDSNN, gomock.Any()).Return(nil)
 			kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
@@ -277,11 +314,44 @@ var _ = Describe("finalizeDeviceConfig", func() {
 		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
 	},
-		Entry("DRA driver daemonset exists", true, false, false),
-		Entry("node metrics daemonset exists", false, true, false),
-		Entry("kmm module exists", false, false, true),
-		Entry("nothing exists", false, false, false),
+		Entry("DeviceClass exists", true, false, false, false),
+		Entry("DRA driver daemonset exists", false, true, false, false),
+		Entry("node metrics daemonset exists", false, false, true, false),
+		Entry("kmm module exists", false, false, false, true),
+		Entry("nothing exists", false, false, false, false),
 	)
+
+	It("owned DeviceClasses - first one exists, deletes and returns", func() {
+		expectOwnedDeviceClasses(
+			resourcev1.DeviceClass{ObjectMeta: metav1.ObjectMeta{Name: "class-a"}},
+			resourcev1.DeviceClass{ObjectMeta: metav1.ObjectMeta{Name: "class-b"}},
+		)
+		kubeClient.EXPECT().Delete(ctx, gomock.Any()).DoAndReturn(
+			func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+				Expect(obj.GetName()).To(Equal("class-a"))
+				return nil
+			},
+		)
+
+		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("owned DeviceClasses - all deleted, continues to DRA daemonset", func() {
+		expectOwnedDeviceClasses()
+		kubeClient.EXPECT().Get(ctx, draDSNN, gomock.Any()).Return(nil)
+		kubeClient.EXPECT().Delete(ctx, gomock.Any()).Return(nil)
+
+		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("owned DeviceClasses - List returns error", func() {
+		kubeClient.EXPECT().List(ctx, gomock.Any(), gomock.Any()).Return(fmt.Errorf("some error"))
+
+		err := dcrh.finalizeDeviceConfig(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
+	})
 })
 
 var _ = Describe("handleKMMModule", func() {
@@ -611,5 +681,284 @@ var _ = Describe("handleDRADriver", func() {
 
 		err := dcrh.handleDRADriver(ctx, devConfig)
 		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = Describe("handleDeviceClass", func() {
+	var (
+		kubeClient *mock_client.MockClient
+		draHelper  *dradriver.MockDRADriver
+		dcrh       deviceConfigReconcilerHelperAPI
+	)
+
+	BeforeEach(func() {
+		ctrl := gomock.NewController(GinkgoT())
+		kubeClient = mock_client.NewMockClient(ctrl)
+		draHelper = dradriver.NewMockDRADriver(ctrl)
+		dcrh = newDeviceConfigReconcilerHelper(kubeClient, nil, nil, nil, nil, nil, draHelper, nil)
+	})
+
+	ctx := context.Background()
+
+	expectOwnedDeviceClasses := func(items ...resourcev1.DeviceClass) *gomock.Call {
+		return kubeClient.EXPECT().List(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+				dcList := list.(*resourcev1.DeviceClassList)
+				dcList.Items = items
+				return nil
+			},
+		)
+	}
+
+	It("default DeviceClass does not exist", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+
+		defaultDC := &resourcev1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{Name: "neuron.aws.com"},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "whatever")),
+			draHelper.EXPECT().SetDeviceClassAsDesired(defaultDC, devConfig, nil).Return(nil),
+			kubeClient.EXPECT().Create(ctx, gomock.Any()).Return(nil),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("default DeviceClass exists", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+
+		defaultDC := &resourcev1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{Name: "neuron.aws.com"},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(resourcev1.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "neuron.aws.com"},
+			}),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Do(
+				func(_ interface{}, _ interface{}, dc *resourcev1.DeviceClass, _ ...client.GetOption) {
+					dc.Name = "neuron.aws.com"
+				},
+			),
+			draHelper.EXPECT().SetDeviceClassAsDesired(defaultDC, devConfig, nil).Return(nil),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("custom DeviceClasses from spec", func() {
+		dcSpec := awslabsv1beta1.DeviceClassSpec{
+			Name: "custom-class",
+			Selectors: []resourcev1.DeviceSelector{
+				{
+					CEL: &resourcev1.CELDeviceSelector{
+						Expression: "device.driver == \"custom.driver\"",
+					},
+				},
+			},
+		}
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+				DeviceClasses:  []awslabsv1beta1.DeviceClassSpec{dcSpec},
+			},
+		}
+
+		customDC := &resourcev1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{Name: "custom-class"},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "whatever")),
+			draHelper.EXPECT().SetDeviceClassAsDesired(customDC, devConfig, &dcSpec).Return(nil),
+			kubeClient.EXPECT().Create(ctx, gomock.Any()).Return(nil),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("custom DeviceClass reconciliation error", func() {
+		dcSpec := awslabsv1beta1.DeviceClassSpec{
+			Name: "custom-class",
+		}
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+				DeviceClasses:  []awslabsv1beta1.DeviceClassSpec{dcSpec},
+			},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(fmt.Errorf("some error")),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("switching from default to custom deletes default DeviceClass", func() {
+		dcSpec := awslabsv1beta1.DeviceClassSpec{Name: "custom-class"}
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+				DeviceClasses:  []awslabsv1beta1.DeviceClassSpec{dcSpec},
+			},
+		}
+
+		customDC := &resourcev1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{Name: "custom-class"},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(resourcev1.DeviceClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "neuron.aws.com"},
+			}),
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).DoAndReturn(
+				func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+					Expect(obj.GetName()).To(Equal("neuron.aws.com"))
+					return nil
+				},
+			),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "whatever")),
+			draHelper.EXPECT().SetDeviceClassAsDesired(customDC, devConfig, &dcSpec).Return(nil),
+			kubeClient.EXPECT().Create(ctx, gomock.Any()).Return(nil),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("switching from custom to default deletes custom DeviceClasses", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+
+		defaultDC := &resourcev1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{Name: "neuron.aws.com"},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(
+				resourcev1.DeviceClass{ObjectMeta: metav1.ObjectMeta{Name: "class-a"}},
+				resourcev1.DeviceClass{ObjectMeta: metav1.ObjectMeta{Name: "class-b"}},
+			),
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).DoAndReturn(
+				func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+					Expect(obj.GetName()).To(Equal("class-a"))
+					return nil
+				},
+			),
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).DoAndReturn(
+				func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+					Expect(obj.GetName()).To(Equal("class-b"))
+					return nil
+				},
+			),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Return(k8serrors.NewNotFound(schema.GroupResource{}, "whatever")),
+			draHelper.EXPECT().SetDeviceClassAsDesired(defaultDC, devConfig, nil).Return(nil),
+			kubeClient.EXPECT().Create(ctx, gomock.Any()).Return(nil),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("changing custom list deletes DeviceClasses no longer defined", func() {
+		dcSpec := awslabsv1beta1.DeviceClassSpec{Name: "class-b"}
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+				DeviceClasses:  []awslabsv1beta1.DeviceClassSpec{dcSpec},
+			},
+		}
+
+		desiredDC := &resourcev1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{Name: "class-b"},
+		}
+
+		gomock.InOrder(
+			expectOwnedDeviceClasses(
+				resourcev1.DeviceClass{ObjectMeta: metav1.ObjectMeta{Name: "class-a"}},
+				resourcev1.DeviceClass{ObjectMeta: metav1.ObjectMeta{Name: "class-b"}},
+			),
+			kubeClient.EXPECT().Delete(ctx, gomock.Any()).DoAndReturn(
+				func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+					Expect(obj.GetName()).To(Equal("class-a"))
+					return nil
+				},
+			),
+			kubeClient.EXPECT().Get(ctx, gomock.Any(), gomock.Any()).Do(
+				func(_ interface{}, _ interface{}, dc *resourcev1.DeviceClass, _ ...client.GetOption) {
+					dc.Name = "class-b"
+				},
+			),
+			draHelper.EXPECT().SetDeviceClassAsDesired(desiredDC, devConfig, &dcSpec).Return(nil),
+		)
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("orphan cleanup List error", func() {
+		devConfig := &awslabsv1beta1.DeviceConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      devConfigName,
+				Namespace: devConfigNamespace,
+			},
+			Spec: awslabsv1beta1.DeviceConfigSpec{
+				DRADriverImage: "some-dra-image:latest",
+			},
+		}
+
+		kubeClient.EXPECT().List(ctx, gomock.Any(), gomock.Any()).Return(fmt.Errorf("some error"))
+
+		err := dcrh.handleDeviceClass(ctx, devConfig)
+		Expect(err).To(HaveOccurred())
 	})
 })

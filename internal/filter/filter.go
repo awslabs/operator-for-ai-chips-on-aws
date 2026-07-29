@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	//"github.com/go-logr/logr"
+	"github.com/awslabs/operator-for-ai-chips-on-aws/internal/constants"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -82,6 +83,24 @@ func (f *Filter) FindDeviceConfigForNodeChange(ctx context.Context, node client.
 	logger.V(1).Info("New requests", "requests", reqs)
 
 	return reqs
+}
+
+func (f *Filter) DeviceClassToModuleReconcileRequest(_ context.Context, obj client.Object) []reconcile.Request {
+	labels := obj.GetLabels()
+	dcName := labels[constants.DeviceConfigNameLabel]
+	dcNamespace := labels[constants.DeviceConfigNamespaceLabel]
+	if dcName == "" || dcNamespace == "" {
+		return nil
+	}
+	return []reconcile.Request{
+		{NamespacedName: types.NamespacedName{Name: dcName, Namespace: dcNamespace}},
+	}
+}
+
+func (f *Filter) HasLabel(label string) predicate.Predicate {
+	return predicate.NewPredicateFuncs(func(o client.Object) bool {
+		return o.GetLabels()[label] != ""
+	})
 }
 
 func isObjectSelectedByLabels(objectLabels map[string]string, selectorLabels map[string]string) (bool, error) {
