@@ -1,0 +1,187 @@
+# Performance-optimized AWS Neuron inference on ROSA, GitOps driven.
+#
+# Apply this one file. Everything cluster-specific is read from annotations and
+# labels on the ArgoCD cluster Secret that deploy/performance/bootstrap-efs.sh
+# creates, so nothing in this file needs editing and no Application ever needs
+# patching.
+#
+#   oc apply -f applicationset-performance.yaml
+#
+# Config bus contract, all set by the bootstrap script on the cluster Secret:
+#
+#   labels (selection and toggles)
+#     argocd.argoproj.io/secret-type: cluster   required for the generator to see it
+#     neuron_perf: "true"                       opts the cluster into this deployment
+#     enable_storage: "true"                    EFS CSI driver, StorageClass
+#     enable_neuron_operator: "true"            AWS Neuron operator
+#     enable_oai: "true"                        OpenShift AI, KServe, serving
+#
+#   annotations (data)
+#     perf_repo_url, perf_repo_revision         where these charts come from
+#     efs_file_system_id                        backs every cache volume
+#     efs_role_arn                              assumed by the EFS CSI driver on STS
+#     serving_namespace, model_name             workload placement and model
+#     tensor_parallel_size, compile_cache_size  optional tuning, defaulted below
+#
+# Note the default local cluster has no Secret, and any selector on
+# argocd.argoproj.io/secret-type excludes it. The bootstrap script therefore
+# creates a cluster Secret pointing at https://kubernetes.default.svc.
+#
+# These Applications are independent and are not ordered relative to each other:
+# ArgoCD sync waves order resources within one Application, not across several.
+# That is fine here. A PVC created before the EFS driver is running simply stays
+# Pending and binds once the driver is up, and each chart orders its own
+# internals with waves.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: efs-storage
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_storage: "true"
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-efs-storage'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        path: deploy/helm/efs-storage
+        helm:
+          valuesObject:
+            efs:
+              fileSystemId: '{{.metadata.annotations.efs_file_system_id}}'
+              roleARN: '{{.metadata.annotations.efs_role_arn}}'
+            storageClass:
+              name: '{{ or (index .metadata.annotations "storage_class_name") "efs-sc" }}'
+      destination:
+        name: '{{.name}}'
+        namespace: openshift-cluster-csi-drivers
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - SkipDryRunOnMissingResource=true
+          - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: neuron-perf-operator
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_neuron_operator: "true"
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-neuron-operator'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        # The existing operator chart, reused unmodified so it stays
+        # independently installable.
+        path: deploy/helm/aws-neuron-operator
+      destination:
+        name: '{{.name}}'
+        namespace: aws-neuron-operator
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - SkipDryRunOnMissingResource=true
+          - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: oai-hardened
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_oai: "true"
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-oai-hardened'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        path: deploy/helm/oai-hardened
+        helm:
+          valuesObject:
+            servingNamespace: '{{ or (index .metadata.annotations "serving_namespace") "neuron-inference" }}'
+            model:
+              name: '{{.metadata.annotations.model_name}}'
+            compileCache:
+              storageClassName: '{{ or (index .metadata.annotations "storage_class_name") "efs-sc" }}'
+              size: '{{ or (index .metadata.annotations "compile_cache_size") "50Gi" }}'
+            modelCache:
+              storageClassName: '{{ or (index .metadata.annotations "storage_class_name") "efs-sc" }}'
+              size: '{{ or (index .metadata.annotations "model_cache_size") "100Gi" }}'
+            servingRuntime:
+              tensorParallelSize: '{{ or (index .metadata.annotations "tensor_parallel_size") "2" }}'
+      destination:
+        name: '{{.name}}'
+        namespace: '{{ or (index .metadata.annotations "serving_namespace") "neuron-inference" }}'
+      syncPolicy:
+        automated:
+          # Deliberately not self-healing or pruning. The RHOAI operator mutates
+          # the DataScienceCluster it owns, and fighting it produces a sync loop.
+          prune: false
+          selfHeal: false
+          allowEmpty: true
+        retry:
+          limit: 100
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - CreateNamespace=true
+          - SkipDryRunOnMissingResource=true
+          # RHOAI and KServe ship large CRDs that exceed the annotation size
+          # limit of client-side apply.
+          - ServerSideApply=true
+      ignoreDifferences:
+        - group: datasciencecluster.opendatahub.io
+          kind: DataScienceCluster
+          jsonPointers:
+            - /status

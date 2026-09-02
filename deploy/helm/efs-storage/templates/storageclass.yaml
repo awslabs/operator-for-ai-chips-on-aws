@@ -1,0 +1,17 @@
+{{- if .Values.storageClass.create }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClass.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+provisioner: efs.csi.aws.com
+reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
+volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
+parameters:
+  provisioningMode: {{ .Values.storageClass.provisioningMode }}
+  fileSystemId: {{ .Values.efs.fileSystemId }}
+  directoryPerms: {{ .Values.storageClass.directoryPerms | quote }}
+  gidRangeStart: {{ .Values.storageClass.gidRangeStart | quote }}
+  gidRangeEnd: {{ .Values.storageClass.gidRangeEnd | quote }}
+{{- end }}

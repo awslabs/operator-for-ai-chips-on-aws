@@ -1,0 +1,216 @@
+# Performance-optimized Neuron inference on ROSA
+
+Shared-storage Neuron compile cache, OpenShift AI, and KServe serving, installed
+GitOps style. This directory is the entry point; the manifests live elsewhere in
+the repo and are listed under [Where things live](#where-things-live).
+
+## The problem this solves
+
+A Neuron model has to be compiled before it can serve. On a cold start that
+compile, plus the model download, is the dominant cost. The Neuron SDK already
+caches compiled artifacts on disk, but in the manifests under
+`deploy/examples/` that cache is either an `emptyDir`, which is discarded when
+the pod restarts, or a `ReadWriteOnce` gp3 volume, which only pods on one node
+can share.
+
+This deployment puts the cache on EFS with `ReadWriteMany`. The first pod
+compiles, and every pod after it reads the result, including pods on other nodes
+and pods created by scaling out. Rescheduling and scale-out stop paying compile
+cost, not just restarts in place.
+
+## What is not GitOps, and why
+
+One step needs AWS credentials and cannot be declarative.
+
+Mounting EFS from ROSA requires an IAM role whose trust policy references the
+cluster's OIDC provider. Creating that role requires AWS credentials, and nothing
+inside the cluster has any until the role exists. There is no way for a cluster
+to create its own first IAM role.
+
+So `bootstrap-efs.sh` creates the AWS prerequisites once, and everything
+in-cluster after that is declarative. Created outside GitOps:
+
+| Resource | Name |
+|---|---|
+| IAM policy | `<infra-name>-aws-efs-csi` |
+| IAM role | `<infra-name>-aws-efs-csi-operator` |
+| EFS filesystem | tagged `Name=$EFS_NAME` and `neuron-perf-cluster=<infra-name>` |
+| Security group | `<infra-name>-efs-mt`, NFS 2049 from the worker group |
+| Mount targets | one per subnet with worker nodes |
+| ArgoCD cluster Secret | `<infra-name>-neuron-perf` |
+
+Everything else, the EFS CSI driver, StorageClass, PVCs, the Neuron operator,
+OpenShift AI, KServe, the serving runtime, is managed by ArgoCD.
+
+## Install
+
+Prerequisites: a ROSA cluster with Neuron nodes (inf2, trn1, trn2), `oc` logged
+in as cluster-admin, `aws` configured, and `jq`.
+
+### 1. Create the AWS prerequisites
+
+Download and read the script before running it. It creates IAM roles, so it
+deserves a look.
+
+```bash
+curl -O https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/performance/bootstrap-efs.sh
+curl -O https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/performance/efs.env.example
+
+chmod +x bootstrap-efs.sh
+cp efs.env.example efs.env
+$EDITOR efs.env          # AWS_REGION is the only value you must set
+
+./bootstrap-efs.sh --dry-run   # see what it would do
+./bootstrap-efs.sh
+```
+
+Re-running is safe. Every step adopts existing resources instead of creating
+duplicates, which matters most for the filesystem: a second filesystem would
+silently abandon a warm cache.
+
+### 2. Install the OpenShift GitOps operator
+
+Unchanged from [../README.md](../README.md).
+
+```bash
+oc apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-gitops-operator
+  namespace: openshift-operators
+spec:
+  channel: latest
+  name: openshift-gitops-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+EOF
+```
+
+### 3. Apply the deployment
+
+One file, applied as-is. No editing, no patching.
+
+```bash
+oc apply -f https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/argocd/applicationset-performance.yaml
+```
+
+For a pinned deployment, replace `main` with a release tag. Tracking `main`
+means an upstream merge can change this cluster.
+
+## How configuration reaches the charts
+
+The script writes one Secret in `openshift-gitops` that is both the ArgoCD
+cluster entry and the configuration bus. Labels select and toggle, annotations
+carry data, and the ApplicationSet reads both through its cluster generator.
+
+```bash
+oc get secret -n openshift-gitops -l neuron_perf=true -o yaml
+```
+
+This is why no Application ever needs patching. A patched Application stores
+cluster-specific state on an object git owns, so re-applying the repo or ArgoCD
+self-healing reverts it. Putting the values on a separate object avoids that
+entirely.
+
+Toggle components by relabelling the Secret, for example to skip OpenShift AI
+because you already run it:
+
+```bash
+oc label secret -n openshift-gitops <infra-name>-neuron-perf enable_oai=false --overwrite
+```
+
+ArgoCD's default local cluster has no Secret, and any selector on
+`argocd.argoproj.io/secret-type` excludes it, which is why the script creates one
+pointing at `https://kubernetes.default.svc`.
+
+## Where things live
+
+| Path | What |
+|---|---|
+| `deploy/performance/` | this README, `bootstrap-efs.sh`, `efs.env.example` |
+| `deploy/argocd/applicationset-performance.yaml` | the single file customers apply |
+| `deploy/helm/efs-storage/` | EFS CSI operator, `ClusterCSIDriver`, StorageClass |
+| `deploy/helm/oai-hardened/` | OpenShift AI, KServe, serving runtime, cache PVCs |
+| `deploy/helm/aws-neuron-operator/` | the Neuron operator, reused unmodified |
+
+The charts are also installable directly for anyone not using GitOps:
+
+```bash
+helm install efs-storage deploy/helm/efs-storage \
+  --set efs.fileSystemId=fs-... --set efs.roleARN=arn:aws:iam::...:role/...
+helm install oai-hardened deploy/helm/oai-hardened
+```
+
+## Verify
+
+```bash
+oc get applications -n openshift-gitops
+oc get clustercsidriver efs.csi.aws.com -o yaml | grep -A5 conditions
+oc get pvc -n neuron-inference
+oc get inferenceservice -n neuron-inference
+```
+
+The three Applications are independent and are not ordered relative to each
+other, because ArgoCD sync waves order resources within one Application, not
+across several. This is fine: a PVC created before the EFS driver is running
+stays `Pending` and binds once the driver is up. Each chart orders its own
+internals with waves.
+
+To confirm the cache is actually being used, watch for the compiler reporting a
+cache hit rather than a compile:
+
+```bash
+oc logs -n neuron-inference -l serving.kserve.io/inferenceservice=llama31-8b-neuron \
+  | grep -i "cache"
+```
+
+The Neuron SDK logs `Using a cached neff at ...` on a hit.
+
+## Known gaps and things to verify on your cluster
+
+Stated plainly rather than discovered later.
+
+- **No speedup number is claimed here.** The compile cache removes recompilation,
+  which is real, but EFS is NFS and the cache is many small files, so per-read
+  latency may be worse than local disk. If measurement shows that dominates, the
+  fix is to keep EFS as the durable shared cache and copy into a local `emptyDir`
+  at pod start. Benchmark before quoting a figure.
+- **`NEURON_CACHE_URL`**, used by the manifests in `deploy/examples/`, does not
+  appear in the AWS Neuron persistent cache documentation. The documented
+  variables are `NEURON_COMPILE_CACHE_URL`, which this chart sets, and
+  `NEURON_CC_FLAGS --cache_dir`, which takes precedence over it. If your image
+  needs the other variable, add it via `servingRuntime.extraEnv`.
+- **OperatorGroup conflict.** GitOps has to create an OperatorGroup in
+  `openshift-cluster-csi-drivers`. If your cluster already has one, set
+  `efsCsiOperator.createOperatorGroup=false` or the sync will conflict.
+- **ArgoCD reports Progressing indefinitely.** There is no built-in health
+  assessment for `DataScienceCluster` or `InferenceService`. Add custom health
+  checks to the ArgoCD CR if a permanently yellow Application is a problem.
+- **ApplicationSet features.** The entrypoint uses `goTemplate` and the cluster
+  generator. Confirm your OpenShift GitOps version supports them.
+- **Probe timings.** `servingRuntime.probeInitialDelaySeconds` defaults to 900,
+  sized for an uncached cold start. Once the cache is warm this is far longer than
+  needed, but lowering it before the first successful compile risks the kubelet
+  killing the pod mid-compile.
+- **vLLM flags.** `--no-enable-prefix-caching` and `--no-enable-chunked-prefill`
+  match the existing example and are left off. They affect steady-state
+  throughput rather than startup. Whether they are safe on the Neuron backend was
+  not verified.
+- **EFS limits.** At most 1000 access points per filesystem, so at most 1000 PVs
+  per StorageClass. PVC size requests are not enforced by EFS, so monitor real
+  usage in CloudWatch rather than trusting the requested size.
+- **RBAC.** These charts create scoped ClusterRoles for ArgoCD instead of the
+  `cluster-admin` binding in [../README.md](../README.md). If you already granted
+  cluster-admin, consider removing it.
+
+## Uninstall
+
+```bash
+oc delete -f https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/argocd/applicationset-performance.yaml
+oc delete secret -n openshift-gitops <infra-name>-neuron-perf
+```
+
+The EFS filesystem, mount targets, security group, IAM role and policy are not
+managed by GitOps and are left in place deliberately, so an uninstall cannot
+destroy a warm cache. Remove them with `aws` when you actually mean to.

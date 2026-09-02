@@ -1,0 +1,48 @@
+{{- if .Values.inferenceService.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.inferenceService.serviceAccountName }}
+  namespace: {{ .Values.servingNamespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+{{- if and (eq .Values.model.source "hf") .Values.modelCache.download.tokenSecretName }}
+secrets:
+  - name: {{ .Values.modelCache.download.tokenSecretName }}
+{{- end }}
+---
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: {{ .Values.inferenceService.name }}
+  namespace: {{ .Values.servingNamespace }}
+  labels:
+    opendatahub.io/dashboard: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # Knative gives up on a revision that does not become ready in time. A cold
+    # start here is a model download plus a full Neuron compile.
+    serving.knative.dev/progress-deadline: {{ .Values.inferenceService.progressDeadline | quote }}
+spec:
+  predictor:
+    serviceAccountName: {{ .Values.inferenceService.serviceAccountName }}
+    minReplicas: {{ .Values.inferenceService.minReplicas }}
+    maxReplicas: {{ .Values.inferenceService.maxReplicas }}
+    model:
+      modelFormat:
+        name: vllm-neuron
+      runtime: {{ .Values.servingRuntime.name }}
+      {{- if eq .Values.model.source "pvc" }}
+      storageUri: {{ printf "pvc://%s" .Values.modelCache.name | quote }}
+      {{- else }}
+      storageUri: {{ printf "hf://%s" .Values.model.name | quote }}
+      {{- end }}
+      resources:
+        limits:
+          aws.amazon.com/neuron: {{ .Values.inferenceService.neuronDevices | quote }}
+          memory: {{ .Values.inferenceService.memoryLimit }}
+        requests:
+          aws.amazon.com/neuron: {{ .Values.inferenceService.neuronDevices | quote }}
+          memory: {{ .Values.inferenceService.memoryRequest }}
+{{- end }}

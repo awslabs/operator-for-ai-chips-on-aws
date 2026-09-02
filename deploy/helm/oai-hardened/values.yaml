@@ -1,0 +1,120 @@
+# OpenShift AI + KServe serving on Neuron, with the Neuron persistent compile
+# cache on shared EFS storage.
+#
+# Why the platform and the workload are one chart: ArgoCD sync waves only order
+# resources inside a single Application. ServingRuntime and InferenceService
+# depend on CRDs that RHOAI installs, so they have to sync in later waves of the
+# same Application, not in a separate one.
+#
+# Requires the StorageClass from deploy/helm/efs-storage (default efs-sc).
+
+# Namespace for the serving workload. This chart owns it, so no other chart in
+# the deployment should create it.
+servingNamespace: neuron-inference
+
+# Prerequisite operators. Set to false for any you already run.
+serviceMesh:
+  enabled: true
+serverless:
+  enabled: true
+openshiftAI:
+  enabled: true
+  channel: fast
+  namespace: redhat-ods-operator
+
+# The Neuron persistent compile cache.
+#
+# This is the whole point of the chart. Compiled NEFF artifacts are written here
+# on first compile and reused by every later pod, on any node. ReadWriteMany is
+# what makes that true: with ReadWriteOnce only pods on one node share the cache,
+# so scale-out and rescheduling recompile from scratch.
+compileCache:
+  enabled: true
+  name: neuron-compile-cache
+  storageClassName: efs-sc
+  accessMode: ReadWriteMany
+  # EFS does not enforce PVC size requests, so this is effectively a label.
+  # Track real growth in CloudWatch rather than trusting this number.
+  size: 50Gi
+  mountPath: /mnt/neuron-cache
+
+# Model weights on shared storage, so replicas stop re-downloading from Hugging
+# Face. Off by default because it needs a token secret and a download Job, which
+# are extra failure modes on the critical path.
+#
+# Before enabling, create the token secret in servingNamespace:
+#   oc create secret generic hf-token --from-literal=HF_TOKEN=<token> -n neuron-inference
+modelCache:
+  enabled: false
+  name: neuron-model-cache
+  storageClassName: efs-sc
+  accessMode: ReadWriteMany
+  size: 100Gi
+  mountPath: /mnt/models-cache
+  # Job that populates the PVC once.
+  download:
+    enabled: false
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    tokenSecretName: hf-token
+    tokenSecretKey: HF_TOKEN
+
+model:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  # hf  = pull weights from Hugging Face at startup
+  # pvc = read weights from the modelCache PVC (requires modelCache.enabled)
+  source: hf
+
+servingRuntime:
+  enabled: true
+  name: vllm-neuron-runtime
+  image: registry.redhat.io/rhaiis/vllm-neuron-rhel9:3
+  tensorParallelSize: 2
+  maxNumSeqs: 4
+  maxModelLen: 4096
+  # These two are disabled in the existing examples/openshiftai runtime. They
+  # affect steady-state throughput rather than startup. Whether they are safe to
+  # enable on the Neuron backend has not been verified here, so the defaults
+  # match the existing example. Test before changing.
+  enablePrefixCaching: false
+  enableChunkedPrefill: false
+  # Sized for an uncached cold start: model download plus full Neuron
+  # compilation. Once the EFS cache is warm this is far longer than needed, but
+  # lowering it before the cache has been populated once risks the kubelet
+  # killing the pod mid-compile. Reduce only after a successful first run.
+  probeInitialDelaySeconds: 900
+  shmSize: 2Gi
+  # Additional env vars for the runtime container. The examples in this repo also
+  # set NEURON_CACHE_URL, which does not appear in the AWS Neuron persistent
+  # cache documentation; the documented variables are NEURON_COMPILE_CACHE_URL
+  # (set automatically by this chart) and NEURON_CC_FLAGS --cache_dir. Add it
+  # here if your image requires it.
+  extraEnv: []
+  #  - name: NEURON_CACHE_URL
+  #    value: /mnt/neuron-cache
+
+inferenceService:
+  enabled: true
+  name: llama31-8b-neuron
+  serviceAccountName: kserve-neuron-sa
+  # Neuron devices requested per replica.
+  neuronDevices: "1"
+  memoryLimit: 100Gi
+  memoryRequest: 10Gi
+  # Knative scales to zero by default. With a multi-minute startup even a warm
+  # cache makes a cold request painful, so pinning one replica trades cost for
+  # latency. Set to 0 to allow scale-to-zero.
+  minReplicas: 1
+  maxReplicas: 1
+  progressDeadline: "1800s"
+
+# No separate compile pre-warm Job is shipped. The Neuron cache key is a hash of
+# the compiler flags and the XLA graph, so a pre-warm only helps if it reproduces
+# the identical graph, and populating the cache under a different key gives no
+# benefit at all. The first InferenceService start does the compile and every
+# later pod on any node reads it from the shared cache, which is the mechanism
+# that matters.
+
+argocdRbac:
+  create: true
+  namespace: openshift-gitops
+  serviceAccountName: openshift-gitops-argocd-application-controller

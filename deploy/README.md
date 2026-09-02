@@ -132,6 +132,17 @@ For clusters without ArgoCD or Helm. Handles ordering via wait loops.
 ./deploy/install.sh --skip-nfd --skip-kmm
 ```
 
+## Performance-optimized deployment
+
+The options above install the operator. To also get OpenShift AI, KServe serving,
+and a Neuron compile cache on shared EFS storage so that model compilation is
+paid once per cluster instead of once per pod, see
+[performance/README.md](performance/README.md).
+
+It follows the same GitOps flow (install the GitOps operator, apply one file)
+plus a one-time script for the AWS resources that cannot be created from inside
+the cluster.
+
 ## Verify
 
 ```bash
