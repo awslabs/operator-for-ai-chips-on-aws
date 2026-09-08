@@ -1,7 +1,7 @@
 apiVersion: k8s.aws/v1beta1
 kind: DeviceConfig
 metadata:
-  name: device-config
+  name: device-config-dra
   namespace:  aws-neuron-operator
 spec:
   useInTreeDrivers: false
