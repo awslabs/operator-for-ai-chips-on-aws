@@ -169,6 +169,9 @@ The Neuron SDK logs `Using a cached neff at ...` on a hit.
 
 ## Validated on
 
+See [VALIDATION.md](VALIDATION.md) for the reproducible procedure and the test
+manifests under `tests/`.
+
 Storage and operator layers were tested end to end on ROSA 4.22.11 (OCP
 4.22.11, one `inf2.8xlarge` in us-west-2a plus two `m5.xlarge` across
 us-west-2a/2b):
@@ -202,7 +205,10 @@ us-west-2a/2b):
 
 Not yet validated: the OpenShift AI layer (`enable_oai`), the `ServingRuntime`,
 and the `InferenceService`. Those need a Hugging Face token for a gated model and
-more worker capacity than this cluster had.
+more worker capacity than this cluster had. In particular **no vLLM startup time
+has been measured**, warm or cold, so this deployment makes no claim about how
+much faster serving starts. [VALIDATION.md](VALIDATION.md) level 3 is the
+procedure for producing that number.
 
 ## Known gaps and things to verify on your cluster
 

@@ -1,0 +1,158 @@
+# Shared-cache validation test
+#
+# Proves the property the whole performance deployment depends on: a Neuron
+# compile artifact written by a pod on one node is readable by a pod on a
+# different node, in a different availability zone.
+#
+# Needs no Hugging Face token and no Neuron device, because it tests the storage
+# layer rather than the model. Requires at least two schedulable nodes.
+#
+#   oc apply -f rwx-share-test.yaml
+#   oc wait --for=condition=Ready pod/cache-writer -n neuron-cache-test --timeout=180s
+#   oc logs -f pod/cache-reader -n neuron-cache-test
+#   oc delete -f rwx-share-test.yaml
+#
+# Expected: the reader prints SHARED-CACHE-OK and reports a node and zone
+# different from the writer's.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neuron-cache-test
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cache-test-pvc
+  namespace: neuron-cache-test
+spec:
+  accessModes:
+    # The point of the test. ReadWriteOnce would confine sharing to one node.
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      # Not enforced by EFS; present because the API requires it.
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-writer
+  namespace: neuron-cache-test
+  labels:
+    role: cache-writer
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: writer
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          set -euo pipefail
+          mkdir -p /cache/neuron-compile-cache/MODULE_test
+          # Stand-in for a compiled NEFF: same shape of access, no Neuron needed.
+          dd if=/dev/urandom of=/cache/neuron-compile-cache/MODULE_test/model.neff \
+            bs=1M count=8 status=none
+          printf 'node=%s\nzone=%s\n' "$NODE_NAME" "$ZONE" > /cache/written-by.txt
+          echo "WRITER-OK  node=$NODE_NAME zone=$ZONE"
+          ls -l /cache/neuron-compile-cache/MODULE_test/model.neff
+          # Stay Running so pod anti-affinity keeps the reader off this node.
+          # The scheduler ignores pods that have already terminated.
+          sleep 900
+      env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: ZONE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['topology.kubernetes.io/zone']
+      volumeMounts:
+        - name: cache
+          mountPath: /cache
+  volumes:
+    - name: cache
+      persistentVolumeClaim:
+        claimName: cache-test-pvc
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-reader
+  namespace: neuron-cache-test
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  affinity:
+    podAntiAffinity:
+      # Forces this pod onto a different node from the writer, which is what
+      # makes the result meaningful.
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: role
+                operator: In
+                values: ["cache-writer"]
+          topologyKey: kubernetes.io/hostname
+  containers:
+    - name: reader
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          set -uo pipefail
+          echo "reader on node=$NODE_NAME zone=$ZONE"
+          for _ in $(seq 1 60); do
+            [ -f /cache/written-by.txt ] && break
+            sleep 2
+          done
+          if [ ! -f /cache/written-by.txt ]; then
+            echo "SHARED-CACHE-FAIL: writer output never appeared"; exit 1
+          fi
+          echo "--- written by:"; cat /cache/written-by.txt
+          artifact=/cache/neuron-compile-cache/MODULE_test/model.neff
+          size=$(stat -c %s "$artifact")
+          echo "--- artifact size: $size bytes"
+          [ "$size" -eq 8388608 ] || { echo "SHARED-CACHE-FAIL: wrong size"; exit 1; }
+          # A shared cache has to be writable from every node, not just readable.
+          echo "also-read-by=$NODE_NAME" >> /cache/written-by.txt || {
+            echo "SHARED-CACHE-FAIL: not writable from this node"; exit 1; }
+          writer_node=$(sed -n 's/^node=//p' /cache/written-by.txt | head -1)
+          if [ "$writer_node" = "$NODE_NAME" ]; then
+            echo "SHARED-CACHE-INCONCLUSIVE: same node as writer"; exit 1
+          fi
+          echo "SHARED-CACHE-OK  read and wrote an 8MB artifact produced on $writer_node"
+      env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: ZONE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['topology.kubernetes.io/zone']
+      volumeMounts:
+        - name: cache
+          mountPath: /cache
+  volumes:
+    - name: cache
+      persistentVolumeClaim:
+        claimName: cache-test-pvc
