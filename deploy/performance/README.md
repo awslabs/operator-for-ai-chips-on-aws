@@ -167,22 +167,75 @@ oc logs -n neuron-inference -l serving.kserve.io/inferenceservice=llama31-8b-neu
 
 The Neuron SDK logs `Using a cached neff at ...` on a hit.
 
+## Validated on
+
+Storage and operator layers were tested end to end on ROSA 4.22.11 (OCP
+4.22.11, one `inf2.8xlarge` in us-west-2a plus two `m5.xlarge` across
+us-west-2a/2b):
+
+- `bootstrap-efs.sh` discovered VPC, both worker subnets, the worker security
+  group and the OIDC provider from the cluster with no manual input beyond
+  `AWS_REGION`, and created the IAM policy, role, filesystem, security group and
+  two mount targets. A second run adopted every resource rather than duplicating
+  it, including the filesystem, so a re-run does not abandon a warm cache.
+- The ArgoCD cluster generator matched the Secret and produced the Applications.
+  Setting `enable_oai=false` correctly suppressed that Application, confirming
+  the label toggle.
+- EFS CSI Driver Operator reached `Succeeded`, and all four `ClusterCSIDriver`
+  conditions went True. The `ROLEARN` path produced an
+  `aws-efs-cloud-credentials` secret containing `role_arn` and
+  `web_identity_token_file`, which is what makes STS work.
+- Dynamic provisioning worked: a `ReadWriteMany` PVC bound in about 20 seconds
+  and the driver created an EFS access point with `775` and uid/gid 1000.
+- Sharing was verified across nodes and availability zones. A pod on the
+  `inf2.8xlarge` in us-west-2a wrote an 8 MB artifact; a pod on an `m5.xlarge` in
+  us-west-2b read it back and appended to it. This is the property the whole
+  design depends on, and it exercises both mount targets.
+- Deleting the PVC removed the access point and left the filesystem intact.
+- ArgoCD held no `cluster-admin` binding. The default application-controller
+  role grants only read-only wildcard access, so the scoped ClusterRoles in
+  these charts supplied the writes.
+- The Neuron operator installed via the same flow (`aws-neuron-operator.v1.3.0`,
+  KMM 2.7.0), the kernel module built, and the node began advertising
+  `aws.amazon.com/neuron: 1` and `aws.amazon.com/neuroncore: 2`. Both
+  Applications were still Synced and Healthy 16 hours later with no drift.
+
+Not yet validated: the OpenShift AI layer (`enable_oai`), the `ServingRuntime`,
+and the `InferenceService`. Those need a Hugging Face token for a gated model and
+more worker capacity than this cluster had.
+
 ## Known gaps and things to verify on your cluster
 
 Stated plainly rather than discovered later.
 
-- **No speedup number is claimed here.** The compile cache removes recompilation,
-  which is real, but EFS is NFS and the cache is many small files, so per-read
-  latency may be worse than local disk. If measurement shows that dominates, the
-  fix is to keep EFS as the durable shared cache and copy into a local `emptyDir`
-  at pod start. Benchmark before quoting a figure.
+- **EFS small-file latency is real but irrelevant here.** Measured on a ROSA
+  4.22 cluster (`inf2.8xlarge`, elastic throughput, generalPurpose):
+
+  | | write 300×32k | read all 300 | write 256 MB | read 256 MB |
+  |---|---|---|---|---|
+  | local `emptyDir` | 515 ms | 8 ms | 1185 ms | 27 ms |
+  | EFS RWX | 5598 ms | 716 ms | 846 ms | 608 ms |
+
+  Per-file overhead is significant, and the local read figures are flattered by
+  page cache, so treat the ratios as an upper bound on EFS's disadvantage. What
+  matters is the absolute cost: reading 300 cached files took 716 ms. Even a
+  cache of several thousand files stays in the low seconds, against a
+  compilation measured in minutes. So copying from EFS into a local `emptyDir`
+  at pod start is not worth the complexity, and this chart does not do it.
+
+  Note this measures storage, not an end-to-end cold start. No speedup figure
+  for actual model serving is claimed, because that has not been measured.
+- **The model-download Job and the serving pods are not `restricted` PSA
+  compliant by default.** The Job now sets a compliant `securityContext`, but
+  the vLLM runtime image has not been checked against `enforce=restricted`.
 - **`NEURON_CACHE_URL`**, used by the manifests in `deploy/examples/`, does not
   appear in the AWS Neuron persistent cache documentation. The documented
   variables are `NEURON_COMPILE_CACHE_URL`, which this chart sets, and
   `NEURON_CC_FLAGS --cache_dir`, which takes precedence over it. If your image
   needs the other variable, add it via `servingRuntime.extraEnv`.
 - **OperatorGroup conflict.** GitOps has to create an OperatorGroup in
-  `openshift-cluster-csi-drivers`. If your cluster already has one, set
+  `openshift-cluster-csi-drivers`. This was verified to work on a cluster that
+  had none. If yours already has one, set
   `efsCsiOperator.createOperatorGroup=false` or the sync will conflict.
 - **ArgoCD reports Progressing indefinitely.** There is no built-in health
   assessment for `DataScienceCluster` or `InferenceService`. Add custom health

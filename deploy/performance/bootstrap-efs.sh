@@ -47,9 +47,20 @@ ok()   { printf '\033[0;32m  ok\033[0m %s\n' "$*"; }
 warn() { printf '\033[0;33m  !!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[0;31mERROR\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Reports an action that only happened for real outside dry-run mode, so
+# --dry-run never claims to have created something.
+did() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    printf '\033[0;33m  would have\033[0m %s\n' "$*"
+  else
+    printf '\033[0;32m  ok\033[0m %s\n' "$*"
+  fi
+}
+
 run() {
   if [[ "$DRY_RUN" == "true" ]]; then
-    printf '\033[0;33m  would run:\033[0m %s\n' "$*"
+    # stderr, so a caller's >/dev/null on the command output cannot swallow it.
+    printf '\033[0;33m  would run:\033[0m %s\n' "$*" >&2
     return 0
   fi
   "$@"
@@ -225,7 +236,7 @@ JSON
 )"
   run aws iam create-policy --policy-name "$POLICY_NAME" \
     --policy-document "$POLICY_DOC" >/dev/null
-  ok "Created ${POLICY_ARN}"
+  did "created IAM policy ${POLICY_ARN}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -265,12 +276,12 @@ else
   run aws iam create-role --role-name "$ROLE_NAME" \
     --assume-role-policy-document "$TRUST_DOC" \
     --description "EFS CSI driver for OpenShift cluster ${INFRA_NAME}" >/dev/null
-  ok "Created"
+  did "created IAM role"
 fi
 
 run aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
 ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
-ok "Policy attached, role ARN ${ROLE_ARN}"
+did "attached policy; role ARN ${ROLE_ARN}"
 
 # ---------------------------------------------------------------------------
 # EFS filesystem
@@ -336,7 +347,7 @@ else
     EFS_SG="$(aws ec2 create-security-group --group-name "$EFS_SG_NAME" \
       --description "NFS access to EFS for OpenShift cluster ${INFRA_NAME}" \
       --vpc-id "$VPC_ID" --query GroupId --output text)"
-    ok "Created ${EFS_SG}"
+    did "created security group ${EFS_SG}"
   fi
 fi
 
@@ -371,7 +382,7 @@ for subnet in "${SUBNET_IDS[@]}"; do
   else
     run aws efs create-mount-target --file-system-id "$FS_ID" \
       --subnet-id "$subnet" --security-groups "$EFS_SG" >/dev/null
-    ok "Created mount target in ${subnet}"
+    did "created mount target in ${subnet}"
   fi
 done
 
@@ -429,7 +440,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
   printf '\033[0;33m  would apply:\033[0m\n%s\n' "$SECRET_MANIFEST"
 else
   printf '%s\n' "$SECRET_MANIFEST" | oc apply -f - >/dev/null
-  ok "Applied"
+  did "applied the Secret"
 fi
 
 # ---------------------------------------------------------------------------
