@@ -1,0 +1,43 @@
+{{- if .Values.argocdRbac.create }}
+# ArgoCD manages cluster-scoped resources here. Granting these specific verbs is
+# preferable to the cluster-admin binding in deploy/README.md, which is far
+# broader than this deployment needs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-efs-storage
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  - apiGroups:
+      - operator.openshift.io
+    resources:
+      - clustercsidrivers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups:
+      - operators.coreos.com
+    resources:
+      - subscriptions
+      - operatorgroups
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-efs-storage
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.argocdRbac.serviceAccountName }}
+    namespace: {{ .Values.argocdRbac.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: argocd-efs-storage
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

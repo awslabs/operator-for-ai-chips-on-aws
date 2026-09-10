@@ -1,0 +1,18 @@
+{{- if .Values.efsCsiOperator.enabled }}
+# Installing the operator does not install the driver. This CR does.
+# Wait for AWSEFSDriverNodeServiceControllerAvailable and
+# AWSEFSDriverControllerServiceControllerAvailable to go True before expecting
+# PVCs to bind.
+apiVersion: operator.openshift.io/v1
+kind: ClusterCSIDriver
+metadata:
+  # Must be the storage provisioner name.
+  name: efs.csi.aws.com
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # The CRD is present on OpenShift, but the operator must be installed before
+    # this reconciles cleanly.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  managementState: Managed
+{{- end }}

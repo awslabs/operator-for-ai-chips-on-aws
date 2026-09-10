@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: storage-latency-probe
+  namespace: neuron-cache-test
+  # Compares the shared EFS cache against local ephemeral disk using the access
+  # pattern a Neuron compile cache actually has: many small files, plus one
+  # large sequential file for contrast.
+  #
+  #   oc apply -f storage-latency-probe.yaml
+  #   oc wait --for=jsonpath='{.status.phase}'=Succeeded pod/storage-latency-probe \
+  #     -n neuron-cache-test --timeout=300s
+  #   oc logs pod/storage-latency-probe -n neuron-cache-test
+  #
+  # Read the absolute numbers, not the ratios. Local reads are served from page
+  # cache, so they flatter local disk. The question that matters is whether cache
+  # retrieval is small next to a compilation, not whether EFS beats local disk.
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: probe
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          ms() { echo $(( $(date +%s%N) / 1000000 )); }
+          bench() {
+            d=$1; label=$2
+            mkdir -p "$d/bench"
+            a=$(ms)
+            for i in $(seq 1 300); do
+              dd if=/dev/zero of="$d/bench/f$i" bs=32k count=1 status=none
+            done
+            sync
+            b=$(ms)
+            c=$(ms); cat "$d"/bench/f* > /dev/null; e=$(ms)
+            f=$(ms); dd if=/dev/zero of="$d/big" bs=1M count=256 status=none; sync; g=$(ms)
+            h=$(ms); cat "$d/big" > /dev/null; k=$(ms)
+            printf '%-18s write300x32k=%6dms  readAll300=%6dms  write256MB=%6dms  read256MB=%6dms\n' \
+              "$label" $((b-a)) $((e-c)) $((g-f)) $((k-h))
+          }
+          bench /local "LOCAL(emptyDir)"
+          bench /cache "EFS(RWX)"
+      volumeMounts:
+        - name: cache
+          mountPath: /cache
+        - name: local
+          mountPath: /local
+  volumes:
+    - name: cache
+      persistentVolumeClaim:
+        claimName: cache-test-pvc
+    - name: local
+      emptyDir: {}

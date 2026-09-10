@@ -1,0 +1,6 @@
+apiVersion: v2
+name: efs-storage
+description: Shared EFS storage for AWS Neuron compile-artifact and model caches on OpenShift
+type: application
+version: 1.3.0
+appVersion: "1.3.0"
