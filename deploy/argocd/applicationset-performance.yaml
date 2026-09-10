@@ -20,8 +20,11 @@
 #     perf_repo_url, perf_repo_revision         where these charts come from
 #     efs_file_system_id                        backs every cache volume
 #     efs_role_arn                              assumed by the EFS CSI driver on STS
-#     serving_namespace, model_name             workload placement and model
-#     tensor_parallel_size, compile_cache_size  optional tuning, defaulted below
+#
+# Only the last two are injected into a chart, and only because neither can be
+# known until AWS has been provisioned. Model choice, tensor parallelism, cache
+# sizes and namespaces are NOT here: they are deployment configuration and live
+# in the charts' values.yaml under version control.
 #
 # Note the default local cluster has no Secret, and any selector on
 # argocd.argoproj.io/secret-type excludes it. The bootstrap script therefore
@@ -58,11 +61,12 @@ spec:
         path: deploy/helm/efs-storage
         helm:
           valuesObject:
+            # The only two values injected from outside git. Neither can be known
+            # until AWS has been provisioned. Everything else this chart needs is
+            # in its values.yaml, under version control.
             efs:
               fileSystemId: '{{.metadata.annotations.efs_file_system_id}}'
               roleARN: '{{.metadata.annotations.efs_role_arn}}'
-            storageClass:
-              name: '{{ or (index .metadata.annotations "storage_class_name") "efs-sc" }}'
       destination:
         name: '{{.name}}'
         namespace: openshift-cluster-csi-drivers
@@ -145,22 +149,16 @@ spec:
         repoURL: '{{.metadata.annotations.perf_repo_url}}'
         targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
         path: deploy/helm/oai-hardened
-        helm:
-          valuesObject:
-            servingNamespace: '{{ or (index .metadata.annotations "serving_namespace") "neuron-inference" }}'
-            model:
-              name: '{{.metadata.annotations.model_name}}'
-            compileCache:
-              storageClassName: '{{ or (index .metadata.annotations "storage_class_name") "efs-sc" }}'
-              size: '{{ or (index .metadata.annotations "compile_cache_size") "50Gi" }}'
-            modelCache:
-              storageClassName: '{{ or (index .metadata.annotations "storage_class_name") "efs-sc" }}'
-              size: '{{ or (index .metadata.annotations "model_cache_size") "100Gi" }}'
-            servingRuntime:
-              tensorParallelSize: '{{ or (index .metadata.annotations "tensor_parallel_size") "2" }}'
+        # No valuesObject. Model, tensor parallelism, cache sizes and namespaces
+        # are deployment configuration and live in this chart's values.yaml,
+        # where a change is a reviewable commit. Fork the repo and edit values,
+        # or add helm.parameters here, rather than pushing them through
+        # annotations on a Secret.
       destination:
         name: '{{.name}}'
-        namespace: '{{ or (index .metadata.annotations "serving_namespace") "neuron-inference" }}'
+        # Fallback only: every resource in the chart sets its own namespace.
+        # Change oai-hardened's servingNamespace value to move the workload.
+        namespace: neuron-inference
       syncPolicy:
         automated:
           # Deliberately not self-healing or pruning. The RHOAI operator mutates

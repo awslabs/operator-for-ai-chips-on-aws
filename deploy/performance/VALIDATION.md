@@ -17,8 +17,7 @@ end-to-end proof and is the one that produces a number you can publish.
 Follow [README.md](README.md). In short:
 
 ```bash
-cp efs.env.example efs.env && $EDITOR efs.env    # set AWS_REGION
-./bootstrap-efs.sh --dry-run                     # inspect
+./bootstrap-efs.sh --dry-run    # inspect; no config file needed
 ./bootstrap-efs.sh
 oc apply -f ../argocd/applicationset-performance.yaml
 ```
@@ -136,8 +135,8 @@ oc label $SECRET -n openshift-gitops enable_oai=true --overwrite
 ```
 
 Then set `modelCache.enabled=true`, `modelCache.download.enabled=true` and
-`model.source=pvc` in `deploy/helm/oai-hardened/values.yaml`, or pass them
-through the ApplicationSet, and wait for the download Job to finish:
+`model.source=pvc` in `deploy/helm/oai-hardened/values.yaml` and commit, which is
+where all model configuration lives. Wait for the download Job to finish:
 
 ```bash
 oc wait --for=condition=complete job/neuron-model-cache-download \

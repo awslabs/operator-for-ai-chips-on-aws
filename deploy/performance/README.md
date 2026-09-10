@@ -54,15 +54,31 @@ deserves a look.
 
 ```bash
 curl -O https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/performance/bootstrap-efs.sh
-curl -O https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/performance/efs.env.example
-
 chmod +x bootstrap-efs.sh
-cp efs.env.example efs.env
-$EDITOR efs.env          # AWS_REGION is the only value you must set
 
 ./bootstrap-efs.sh --dry-run   # see what it would do
 ./bootstrap-efs.sh
 ```
+
+No arguments and no config file are required. The region is derived from the
+cluster's own nodes, which is safer than a default in `~/.aws/config`, since EFS
+and its mount targets have to live in the cluster's region.
+
+To override a default, take `efs.env.example` and edit it:
+
+```bash
+curl -O https://raw.githubusercontent.com/awslabs/operator-for-ai-chips-on-aws/main/deploy/performance/efs.env.example
+cp efs.env.example efs.env && $EDITOR efs.env
+```
+
+What that file covers: the EFS filesystem name and its throughput, performance
+and encryption settings; the GitOps namespace; which repo and revision this
+cluster syncs from; and which of the three components this cluster gets.
+
+What it deliberately does not cover: the model, tensor parallelism, cache sizes
+and namespaces. Those are deployment configuration and live in the charts'
+`values.yaml`, under version control where a change is a reviewable commit
+rather than an annotation written by a script on someone's laptop.
 
 Re-running is safe. Every step adopts existing resources instead of creating
 duplicates, which matters most for the filesystem: a second filesystem would
@@ -100,25 +116,53 @@ means an upstream merge can change this cluster.
 
 ## How configuration reaches the charts
 
-The script writes one Secret in `openshift-gitops` that is both the ArgoCD
-cluster entry and the configuration bus. Labels select and toggle, annotations
-carry data, and the ApplicationSet reads both through its cluster generator.
+Two categories, kept deliberately separate.
+
+**Bootstrap facts** cannot be known until AWS is provisioned: the filesystem ID
+and the role ARN. The script writes those, plus which repo this cluster syncs
+from, as annotations on one Secret in `openshift-gitops` that doubles as the
+ArgoCD cluster entry. Labels on the same Secret select which components the
+cluster gets.
 
 ```bash
 oc get secret -n openshift-gitops -l neuron_perf=true -o yaml
 ```
 
-This is why no Application ever needs patching. A patched Application stores
-cluster-specific state on an object git owns, so re-applying the repo or ArgoCD
-self-healing reverts it. Putting the values on a separate object avoids that
-entirely.
+Only `efs_file_system_id` and `efs_role_arn` are injected into a chart. This is
+why no Application ever needs patching: a patch stores cluster-specific state on
+an object git owns, so re-applying the repo or ArgoCD self-healing reverts it.
+Putting the values on a separate object avoids that.
 
-Toggle components by relabelling the Secret, for example to skip OpenShift AI
-because you already run it:
+**Deployment configuration** is everything else: model, tensor parallelism, cache
+sizes, namespaces, probe timings. That lives in `values.yaml` in the charts, where
+changing it is a reviewable commit. It is not routed through the Secret, because
+a shell script writing model choices into annotations would put deployment config
+outside version control, which is the opposite of what GitOps is for.
+
+Toggle components by editing `ENABLE_*` in `efs.env` and re-running the script,
+which is the source of truth:
+
+```bash
+sed -i 's/^ENABLE_OAI=.*/ENABLE_OAI=false/' efs.env
+./bootstrap-efs.sh
+```
+
+Relabelling the Secret directly also works and takes effect within a minute:
 
 ```bash
 oc label secret -n openshift-gitops <infra-name>-neuron-perf enable_oai=false --overwrite
 ```
+
+but it is a temporary override. The script re-applies the Secret from `efs.env`
+on its next run, so a manual label is silently reverted then. Put the decision in
+`efs.env` if you want it to stick.
+
+Turning a component off removes its Application and, because ApplicationSets
+default to `preserveResourcesOnDeletion: false`, its resources too. Verified:
+disabling `enable_oai` removed the `neuron-inference`, `openshift-serverless` and
+`redhat-ods-operator` namespaces and the operator Subscriptions it had created.
+An already-installed CSV survives, since deleting a Subscription does not
+uninstall the operator; remove those by hand if you want them gone.
 
 ArgoCD's default local cluster has no Secret, and any selector on
 `argocd.argoproj.io/secret-type` excludes it, which is why the script creates one
@@ -177,13 +221,14 @@ Storage and operator layers were tested end to end on ROSA 4.22.11 (OCP
 us-west-2a/2b):
 
 - `bootstrap-efs.sh` discovered VPC, both worker subnets, the worker security
-  group and the OIDC provider from the cluster with no manual input beyond
-  `AWS_REGION`, and created the IAM policy, role, filesystem, security group and
-  two mount targets. A second run adopted every resource rather than duplicating
-  it, including the filesystem, so a re-run does not abandon a warm cache.
+  group, the OIDC provider and the region from the cluster with no config file at
+  all, and created the IAM policy, role, filesystem, security group and two mount
+  targets. A second run adopted every resource rather than duplicating it,
+  including the filesystem, so a re-run does not abandon a warm cache.
 - The ArgoCD cluster generator matched the Secret and produced the Applications.
-  Setting `enable_oai=false` correctly suppressed that Application, confirming
-  the label toggle.
+  Setting `enable_oai=false` suppressed that Application, and turning it back off
+  after an accidental enable removed the three namespaces and the operator
+  Subscriptions it had created, confirming both the toggle and its rollback.
 - EFS CSI Driver Operator reached `Succeeded`, and all four `ClusterCSIDriver`
   conditions went True. The `ROLEARN` path produced an
   `aws-efs-cloud-credentials` secret containing `role_arn` and

@@ -1,32 +1,28 @@
 #!/usr/bin/env bash
 #
-# bootstrap-efs.sh — the one step of the performance deployment that cannot be
-# GitOps driven.
+# bootstrap-efs.sh - the one step of this deployment that cannot be GitOps driven.
 #
-# Why this script exists: mounting EFS from a ROSA cluster requires an IAM role
-# whose trust policy references the cluster's OIDC provider. Creating that role
-# requires AWS credentials, and nothing running inside the cluster has any until
-# the role exists. So the AWS-side prerequisites are created here, once, and
-# everything in-cluster afterwards is declarative.
+# Mounting EFS from ROSA needs an IAM role whose trust policy references the
+# cluster's OIDC provider. Creating that role needs AWS credentials, and nothing
+# in the cluster has any until the role exists. So the AWS side is created here,
+# once, and everything after it is declarative.
 #
-# What it creates in AWS:
-#   - an IAM policy with the EFS CSI driver permissions
-#   - an IAM role trusted by the two EFS CSI driver service accounts
-#   - an EFS filesystem (adopted if one already exists for this cluster)
-#   - a security group allowing NFS from the worker nodes
-#   - one mount target per worker subnet
+# Creates in AWS: an IAM policy and a role trusted by the two EFS CSI driver
+# service accounts, an EFS filesystem, a security group allowing NFS from the
+# workers, and one mount target per worker subnet.
 #
-# What it creates in the cluster:
-#   - an ArgoCD cluster Secret carrying the filesystem ID, role ARN and workload
-#     settings as annotations. That Secret is the config bus the ApplicationSet
-#     reads, which is why no Application ever needs patching.
+# Creates in the cluster: an ArgoCD cluster Secret carrying the filesystem ID and
+# role ARN. Those are the only two facts unknowable until AWS is provisioned, so
+# they are the only two this feeds to GitOps. Model, tensor parallelism, cache
+# sizes and namespaces are deployment config and live in the charts' values.yaml,
+# under version control.
 #
-# Re-running is safe. Every step adopts existing resources rather than
-# duplicating them.
+# Re-running is safe: every step adopts existing resources instead of duplicating
+# them. Nothing is required as input; the region is derived from the cluster.
 #
-# Usage:
-#   cp efs.env.example efs.env && $EDITOR efs.env
-#   ./bootstrap-efs.sh [--dry-run] [--env-file path]
+# Usage: ./bootstrap-efs.sh [--dry-run] [--env-file path]
+#        copy efs.env.example to efs.env to override any default
+#
 
 set -euo pipefail
 
@@ -76,21 +72,25 @@ for tool in aws oc jq; do
   command -v "$tool" >/dev/null || die "$tool is required but not on PATH"
 done
 
-[[ -f "$ENV_FILE" ]] || die "Config file not found: $ENV_FILE (copy efs.env.example to efs.env)"
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  ok "Config ${ENV_FILE}"
+else
+  ok "No ${ENV_FILE}; using defaults for everything (see efs.env.example to override)"
+fi
 
-: "${AWS_REGION:?AWS_REGION must be set in $ENV_FILE}"
-: "${EFS_NAME:?EFS_NAME must be set in $ENV_FILE}"
+# Inputs are limited to things this script actually needs to provision AWS
+# resources, plus which repo/revision and which components this particular
+# cluster should get. Model choice, tensor parallelism, cache sizes and
+# namespaces are deployment configuration and live in the charts' values.yaml,
+# under version control where they can be reviewed.
+#
+# Nothing here is required. AWS_REGION is derived from the cluster if unset.
+: "${EFS_NAME:=neuron-cache}"
 : "${GITOPS_NAMESPACE:=openshift-gitops}"
-: "${PERF_REPO_URL:?PERF_REPO_URL must be set in $ENV_FILE}"
+: "${PERF_REPO_URL:=https://github.com/awslabs/operator-for-ai-chips-on-aws.git}"
 : "${PERF_REPO_REVISION:=main}"
-: "${SERVING_NAMESPACE:=neuron-inference}"
-: "${MODEL_NAME:?MODEL_NAME must be set in $ENV_FILE}"
-: "${TENSOR_PARALLEL_SIZE:=2}"
-: "${STORAGE_CLASS_NAME:=efs-sc}"
-: "${COMPILE_CACHE_SIZE:=50Gi}"
-: "${MODEL_CACHE_SIZE:=100Gi}"
 : "${EFS_THROUGHPUT_MODE:=elastic}"
 : "${EFS_PERFORMANCE_MODE:=generalPurpose}"
 : "${EFS_ENCRYPTED:=true}"
@@ -98,12 +98,7 @@ source "$ENV_FILE"
 : "${ENABLE_NEURON_OPERATOR:=true}"
 : "${ENABLE_OAI:=true}"
 
-export AWS_REGION
-
 oc whoami >/dev/null 2>&1 || die "Not logged in to a cluster. Run 'oc login' first."
-ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)" \
-  || die "Unable to call AWS STS. Check your AWS credentials."
-ok "AWS account ${ACCOUNT_ID}, region ${AWS_REGION}"
 ok "Cluster user $(oc whoami)"
 
 # ---------------------------------------------------------------------------
@@ -132,6 +127,31 @@ done < <(
 [[ ${#INSTANCE_IDS[@]} -gt 0 ]] || die "Found no EC2 instance IDs on any node providerID"
 ok "Found ${#INSTANCE_IDS[@]} node instance(s)"
 
+# Derive the region from the cluster rather than trusting the caller's aws
+# config. EFS and its mount targets have to live in the cluster's own region,
+# and a stale default region in ~/.aws/config would otherwise create them
+# somewhere the nodes cannot reach.
+if [[ -z "${AWS_REGION:-}" ]]; then
+  NODE_AZ="$(oc get nodes -o jsonpath='{.items[0].spec.providerID}' \
+    | sed -n 's#^aws:///\([a-z0-9-]*\)/.*#\1#p')"
+  [[ -n "$NODE_AZ" ]] || die "Could not derive the region from node providerID; set AWS_REGION in $ENV_FILE"
+  # AZ to region: us-west-2a -> us-west-2
+  AWS_REGION="${NODE_AZ%?}"
+  ok "Region ${AWS_REGION} (derived from the cluster)"
+else
+  ok "Region ${AWS_REGION} (from ${ENV_FILE})"
+fi
+export AWS_REGION
+
+# One call serves two purposes: it proves the credentials work, and its ARN
+# supplies the partition and account for the IAM policy ARN below. Partition is
+# read rather than hardcoded so this also works in GovCloud and China.
+CALLER="$(aws sts get-caller-identity --query Arn --output text)" \
+  || die "Unable to call AWS STS. Check your AWS credentials."
+AWS_PARTITION="$(cut -d: -f2 <<<"$CALLER")"
+AWS_ACCOUNT="$(cut -d: -f5 <<<"$CALLER")"
+ok "AWS identity ${CALLER}"
+
 INSTANCE_JSON="$(aws ec2 describe-instances --instance-ids "${INSTANCE_IDS[@]}" \
   --query 'Reservations[].Instances[].{Vpc:VpcId,Subnet:SubnetId,Sgs:SecurityGroups[].GroupId}' \
   --output json)"
@@ -154,7 +174,20 @@ ok "Worker security group ${WORKER_SG}"
 OIDC_PROVIDER="$(oc get authentication.config.openshift.io cluster \
   -o jsonpath='{.spec.serviceAccountIssuer}' | sed -e 's#^https://##')"
 [[ -n "$OIDC_PROVIDER" ]] || die "Cluster has no serviceAccountIssuer; this does not look like an STS cluster"
-ok "OIDC provider ${OIDC_PROVIDER}"
+
+# Ask IAM for the provider's ARN rather than assembling it. If the cluster's
+# issuer is not registered as an OIDC provider in this account, the role would be
+# created with a trust policy nothing can assume, so fail here with a clear
+# reason instead of leaving a broken role behind.
+OIDC_ARN="$(aws iam list-open-id-connect-providers \
+  --query "OpenIDConnectProviderList[?ends_with(Arn, '/${OIDC_PROVIDER}')].Arn | [0]" \
+  --output text 2>/dev/null || true)"
+if [[ -z "$OIDC_ARN" || "$OIDC_ARN" == "None" ]]; then
+  die "No IAM OIDC provider matches the cluster issuer ${OIDC_PROVIDER} in this account.
+     Either your AWS credentials point at a different account than the cluster,
+     or the cluster's OIDC provider was never registered."
+fi
+ok "OIDC provider ${OIDC_ARN}"
 
 # ---------------------------------------------------------------------------
 # Confirm
@@ -167,7 +200,7 @@ CLUSTER_SECRET_NAME="${INFRA_NAME}-neuron-perf"
 
 cat <<SUMMARY
 
-This will create, in AWS account ${ACCOUNT_ID} / ${AWS_REGION}:
+This will create, in ${AWS_REGION}:
   IAM policy          ${POLICY_NAME}
   IAM role            ${ROLE_NAME}
   EFS filesystem      ${EFS_NAME}  (adopted if it already exists)
@@ -194,10 +227,13 @@ fi
 
 log "IAM policy ${POLICY_NAME}"
 
-POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
+# An IAM policy ARN is fully determined by partition, account and name, so build
+# it rather than searching. aws iam list-policies paginates, and with --output
+# text the --query is applied per page, which returns one line per page.
+POLICY_ARN="arn:${AWS_PARTITION}:iam::${AWS_ACCOUNT}:policy/${POLICY_NAME}"
 
 if aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
-  ok "Already exists, reusing"
+  ok "Already exists, reusing ${POLICY_ARN}"
 else
   POLICY_DOC="$(cat <<'JSON'
 {
@@ -249,7 +285,7 @@ fi
 log "IAM role ${ROLE_NAME}"
 
 TRUST_DOC="$(jq -n \
-  --arg provider_arn "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}" \
+  --arg provider_arn "${OIDC_ARN}" \
   --arg sub_key "${OIDC_PROVIDER}:sub" \
   '{
     Version: "2012-10-17",
@@ -268,7 +304,10 @@ TRUST_DOC="$(jq -n \
     }]
   }')"
 
-if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+ROLE_ARN="$(aws iam get-role --role-name "$ROLE_NAME" \
+  --query Role.Arn --output text 2>/dev/null || true)"
+
+if [[ -n "$ROLE_ARN" && "$ROLE_ARN" != "None" ]]; then
   ok "Already exists, refreshing trust policy"
   run aws iam update-assume-role-policy --role-name "$ROLE_NAME" \
     --policy-document "$TRUST_DOC"
@@ -276,12 +315,12 @@ else
   run aws iam create-role --role-name "$ROLE_NAME" \
     --assume-role-policy-document "$TRUST_DOC" \
     --description "EFS CSI driver for OpenShift cluster ${INFRA_NAME}" >/dev/null
-  did "created IAM role"
+  ROLE_ARN="arn:${AWS_PARTITION}:iam::${AWS_ACCOUNT}:role/${ROLE_NAME}"
+  did "created IAM role ${ROLE_ARN}"
 fi
 
 run aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
-ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
-did "attached policy; role ARN ${ROLE_ARN}"
+did "attached policy to ${ROLE_NAME}"
 
 # ---------------------------------------------------------------------------
 # EFS filesystem
@@ -420,14 +459,7 @@ metadata:
     efs_file_system_id: "${FS_ID}"
     efs_role_arn: "${ROLE_ARN}"
     aws_region: "${AWS_REGION}"
-    aws_account_id: "${ACCOUNT_ID}"
     vpc_id: "${VPC_ID}"
-    serving_namespace: "${SERVING_NAMESPACE}"
-    model_name: "${MODEL_NAME}"
-    tensor_parallel_size: "${TENSOR_PARALLEL_SIZE}"
-    storage_class_name: "${STORAGE_CLASS_NAME}"
-    compile_cache_size: "${COMPILE_CACHE_SIZE}"
-    model_cache_size: "${MODEL_CACHE_SIZE}"
 type: Opaque
 stringData:
   name: "${INFRA_NAME}"
@@ -449,24 +481,16 @@ fi
 
 APPSET_URL="${PERF_REPO_URL%.git}/raw/${PERF_REPO_REVISION}/deploy/argocd/applicationset-performance.yaml"
 
+log "Bootstrap complete"
+ok "filesystem ${FS_ID}"
+ok "role ${ROLE_ARN}"
+ok "config Secret ${CLUSTER_SECRET_NAME} in ${GITOPS_NAMESPACE}"
+
 cat <<NEXT
 
-$(log "Bootstrap complete")
-
-  EFS filesystem   ${FS_ID}
-  IAM role         ${ROLE_ARN}
-  Config Secret    ${CLUSTER_SECRET_NAME} in ${GITOPS_NAMESPACE}
-
-Next, apply the deployment. Nothing below needs editing.
+Apply the deployment, unmodified:
 
   oc apply -f ${APPSET_URL}
-
-Then watch it converge:
-
-  oc get applications -n ${GITOPS_NAMESPACE} -w
-
-The first InferenceService start compiles the model and populates the shared
-cache on EFS. That run is slow. Every later pod, on any node, reads the compiled
-artifacts from the cache instead of recompiling.
+  oc get applications -n ${GITOPS_NAMESPACE}
 
 NEXT
