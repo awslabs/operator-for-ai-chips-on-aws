@@ -1,0 +1,6 @@
+apiVersion: v2
+name: oai-platform
+description: Platform layer for Neuron serving - ServiceMesh, Serverless and OpenShift AI operators plus a KServe-only DataScienceCluster
+type: application
+version: 1.3.0
+appVersion: "1.3.0"

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: neuron-serving
+description: One vLLM-on-Neuron model served by KServe, with the Neuron compile cache on shared EFS
+type: application
+version: 1.3.0
+appVersion: "1.3.0"

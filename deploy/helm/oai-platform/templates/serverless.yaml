@@ -1,0 +1,44 @@
+{{- if .Values.serverless.enabled }}
+{{- if .Values.serverless.createNamespace }}
+# Red Hat OpenShift Serverless (Knative Serving), the networking layer behind
+# KServe's Serverless deployment mode.
+#
+# Prune=false on all three objects. This namespace is shared: deleting it takes
+# the operator, its CSV and any KnativeServing with it. A previous version of
+# this deployment did exactly that when the component was disabled.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.serverless.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: Prune=false
+---
+{{- end }}
+{{- if .Values.serverless.createOperatorGroup }}
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: {{ .Values.serverless.namespace }}
+  namespace: {{ .Values.serverless.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: Prune=false
+spec: {}
+---
+{{- end }}
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: serverless-operator
+  namespace: {{ .Values.serverless.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  channel: {{ .Values.serverless.channel }}
+  installPlanApproval: Automatic
+  name: serverless-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+{{- end }}

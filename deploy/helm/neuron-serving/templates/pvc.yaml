@@ -1,0 +1,56 @@
+{{- if and .Values.compileCache.enabled .Values.compileCache.create }}
+# Neuron persistent compile cache on shared EFS.
+#
+# ReadWriteMany is load-bearing. The EFS CSI driver provisions this as a
+# subdirectory of the filesystem behind its own access point, so every replica on
+# every node mounts the same cache and a compile paid once is never paid again.
+#
+# The name is fixed rather than release-derived because this claim is shared
+# between models. A second neuron-serving release installs with
+# compileCache.create=false and compileCache.existingClaim set to this name, and
+# mounts the same volume. Cache entries are keyed by a hash of the compiler flags
+# and the XLA graph, so different models cannot collide inside it.
+#
+# Prune=false: a shared cache outlives any one model's Application, and losing it
+# means every model recompiles from scratch.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.compileCache.name }}
+  namespace: {{ .Values.targetNamespace.name }}
+  labels:
+    {{- include "neuron-serving.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes:
+    - {{ .Values.compileCache.accessMode }}
+  storageClassName: {{ .Values.compileCache.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.compileCache.size }}
+{{- end }}
+{{- if and .Values.modelCache.enabled .Values.modelCache.create }}
+{{- if and .Values.compileCache.enabled .Values.compileCache.create }}
+---
+{{- end }}
+# Model weights on shared storage. Per-model, so the name is release-derived and
+# a second release gets its own claim.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "neuron-serving.modelCacheClaim" . }}
+  namespace: {{ .Values.targetNamespace.name }}
+  labels:
+    {{- include "neuron-serving.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  accessModes:
+    - {{ .Values.modelCache.accessMode }}
+  storageClassName: {{ .Values.modelCache.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.modelCache.size }}
+{{- end }}

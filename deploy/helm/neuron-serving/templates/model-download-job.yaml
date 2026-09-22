@@ -7,8 +7,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Values.modelCache.name }}-download
-  namespace: {{ .Values.servingNamespace }}
+  name: {{ include "neuron-serving.fullname" . }}-model-download
+  namespace: {{ .Values.targetNamespace.name }}
+  labels:
+    {{- include "neuron-serving.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "3"
     # Job specs are immutable, so a re-sync with any changed field fails without
@@ -17,6 +19,9 @@ metadata:
 spec:
   backoffLimit: 3
   template:
+    metadata:
+      labels:
+        {{- include "neuron-serving.labels" . | nindent 8 }}
     spec:
       restartPolicy: OnFailure
       securityContext:
@@ -35,11 +40,15 @@ spec:
               value: {{ .Values.model.name }}
             - name: TARGET_DIR
               value: {{ .Values.modelCache.mountPath }}
+            {{- with .Values.model.tokenSecretName }}
+            # Only referenced when model.tokenSecretName is set. Nothing in this
+            # chart creates the Secret; see NOTES.txt.
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.modelCache.download.tokenSecretName }}
-                  key: {{ .Values.modelCache.download.tokenSecretKey }}
+                  name: {{ . }}
+                  key: {{ $.Values.model.tokenSecretKey }}
+            {{- end }}
           command:
             - /bin/bash
             - -c
@@ -68,5 +77,5 @@ spec:
       volumes:
         - name: model-cache
           persistentVolumeClaim:
-            claimName: {{ .Values.modelCache.name }}
+            claimName: {{ include "neuron-serving.modelCacheClaim" . }}
 {{- end }}

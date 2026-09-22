@@ -20,20 +20,24 @@
 # Re-running is safe: every step adopts existing resources instead of duplicating
 # them. Nothing is required as input; the region is derived from the cluster.
 #
-# Usage: ./bootstrap-efs.sh [--dry-run] [--env-file path]
-#        copy efs.env.example to efs.env to override any default
+# Usage: ./bootstrap-efs.sh [--dry-run] [--yes] [--env-file path]
+#        copy efs.env.example to efs.env to override any default; --yes skips the
+#        confirmation prompt, for non-interactive runs
 #
 
 set -euo pipefail
 
 ENV_FILE="$(dirname "$0")/efs.env"
 DRY_RUN=false
+ASSUME_YES=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)  DRY_RUN=true; shift ;;
+    -y|--yes)   ASSUME_YES=true; shift ;;
     --env-file) ENV_FILE="$2"; shift 2 ;;
-    -h|--help)  sed -n '2,30p' "$0"; exit 0 ;;
+    # Print only the header block: a fixed line range leaks the code after it.
+    -h|--help)  awk 'NR>1 && !/^#/{exit} NR>1' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -166,6 +170,7 @@ while IFS= read -r sn; do
   [[ -n "$sn" ]] && SUBNET_IDS+=("$sn")
 done < <(jq -r '[.[].Subnet] | unique | .[]' <<<"$INSTANCE_JSON")
 WORKER_SG="$(jq -r '[.[].Sgs[]] | unique | .[0]' <<<"$INSTANCE_JSON")"
+[[ ${#SUBNET_IDS[@]} -gt 0 ]] || die "Node instances reported no subnet; EFS mount targets need at least one"
 
 ok "VPC ${VPC_ID}"
 ok "Subnets ${SUBNET_IDS[*]}"
@@ -212,17 +217,62 @@ and in the cluster:
 
 SUMMARY
 
-if [[ "$DRY_RUN" != "true" ]]; then
+if [[ "$DRY_RUN" != "true" && "$ASSUME_YES" != "true" ]]; then
   read -r -p "Proceed? [y/N] " reply
   [[ "$reply" == "y" || "$reply" == "Y" ]] || die "Aborted by user"
 fi
 
 # ---------------------------------------------------------------------------
-# IAM policy
+# EFS filesystem
 #
-# Permissions are the set documented for the AWS EFS CSI Driver Operator on
-# STS clusters. Access point create and delete are tag-scoped so this role
-# cannot touch access points it did not create.
+# Runs before the IAM policy, which scopes CreateAccessPoint to this filesystem's
+# ARN: reordering is simpler than creating the policy first and promoting a second
+# version later. Adopt by Name tag plus cluster tag, because creating a second
+# filesystem on a re-run would silently abandon a warm cache.
+# ---------------------------------------------------------------------------
+
+log "EFS filesystem ${EFS_NAME}"
+
+# --output json into jq -s rather than --query with --output text: under CLI
+# auto-pagination --query runs per page, so text output can carry one token per
+# page and "None<TAB>fs-abc" would pass a bare non-empty guard. Slurping handles
+# either shape; `first // empty` gives "" rather than "null".
+FS_ID="$(aws efs describe-file-systems --output json 2>/dev/null | jq -rs \
+  --arg name "$EFS_NAME" --arg cluster "$INFRA_NAME" '[ .[].FileSystems[]
+    | select(((.Tags // []) | any(.Key == "Name" and .Value == $name))
+         and ((.Tags // []) | any(.Key == "neuron-perf-cluster" and .Value == $cluster)))
+    | .FileSystemId ] | first // empty' || true)"
+
+if [[ -n "$FS_ID" ]]; then
+  ok "Adopting existing filesystem ${FS_ID}"
+else
+  if [[ "$DRY_RUN" == "true" ]]; then
+    warn "Would create a filesystem; using placeholder ID for the rest of this dry run"
+    FS_ID="fs-DRYRUN"
+  else
+    ENCRYPT_FLAG="--no-encrypted"
+    [[ "$EFS_ENCRYPTED" == "true" ]] && ENCRYPT_FLAG="--encrypted"
+    FS_ID="$(aws efs create-file-system \
+      --performance-mode "$EFS_PERFORMANCE_MODE" \
+      --throughput-mode "$EFS_THROUGHPUT_MODE" \
+      $ENCRYPT_FLAG \
+      --tags "Key=Name,Value=${EFS_NAME}" \
+             "Key=neuron-perf-cluster,Value=${INFRA_NAME}" \
+      --query FileSystemId --output text)"
+    ok "Created ${FS_ID}, waiting for it to become available"
+    for _ in $(seq 1 60); do
+      state="$(aws efs describe-file-systems --file-system-id "$FS_ID" --output json \
+        | jq -rs '[ .[].FileSystems[].LifeCycleState ] | first // empty')"
+      [[ "$state" == "available" ]] && break
+      sleep 5
+    done
+    [[ "$state" == "available" ]] || die "Filesystem ${FS_ID} did not become available"
+    ok "Available"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# IAM policy
 # ---------------------------------------------------------------------------
 
 log "IAM policy ${POLICY_NAME}"
@@ -232,10 +282,15 @@ log "IAM policy ${POLICY_NAME}"
 # text the --query is applied per page, which returns one line per page.
 POLICY_ARN="arn:${AWS_PARTITION}:iam::${AWS_ACCOUNT}:policy/${POLICY_NAME}"
 
-if aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
-  ok "Already exists, reusing ${POLICY_ARN}"
-else
-  POLICY_DOC="$(cat <<'JSON'
+# The set documented for the AWS EFS CSI Driver Operator on STS clusters, narrowed
+# to this cluster. CreateAccessPoint takes a file-system resource type, so scope it
+# to this filesystem's ARN. DeleteAccessPoint takes an access-point resource type
+# whose ARN omits the filesystem ID and accepts only aws:ResourceTag, so scope that
+# by tag: efs.csi.aws.com/cluster=true is set by the driver itself, and
+# kubernetes.io/cluster/<infrastructureName>:owned by the --tags argument
+# OpenShift's operator gives aws-efs-csi-driver-controller. Changing either tag
+# would break provisioning. StringEquals since both values are literals.
+POLICY_DOC="$(cat <<JSON
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -253,9 +308,9 @@ else
     {
       "Effect": "Allow",
       "Action": "elasticfilesystem:CreateAccessPoint",
-      "Resource": "*",
+      "Resource": "arn:${AWS_PARTITION}:elasticfilesystem:${AWS_REGION}:${AWS_ACCOUNT}:file-system/${FS_ID}",
       "Condition": {
-        "StringLike": { "aws:RequestTag/efs.csi.aws.com/cluster": "true" }
+        "StringEquals": { "aws:RequestTag/efs.csi.aws.com/cluster": "true" }
       }
     },
     {
@@ -263,13 +318,28 @@ else
       "Action": "elasticfilesystem:DeleteAccessPoint",
       "Resource": "*",
       "Condition": {
-        "StringEquals": { "aws:ResourceTag/efs.csi.aws.com/cluster": "true" }
+        "StringEquals": {
+          "aws:ResourceTag/efs.csi.aws.com/cluster": "true",
+          "aws:ResourceTag/kubernetes.io/cluster/${INFRA_NAME}": "owned"
+        }
       }
     }
   ]
 }
 JSON
 )"
+
+if aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
+  # Refresh rather than reuse: a policy left by an earlier run still carries the
+  # unscoped grant. IAM caps a policy at five versions, so clear the others.
+  for v in $(aws iam list-policy-versions --policy-arn "$POLICY_ARN" --output json \
+      | jq -rs '.[].Versions[] | select(.IsDefaultVersion | not) | .VersionId'); do
+    run aws iam delete-policy-version --policy-arn "$POLICY_ARN" --version-id "$v"
+  done
+  run aws iam create-policy-version --policy-arn "$POLICY_ARN" \
+    --policy-document "$POLICY_DOC" --set-as-default >/dev/null
+  did "refreshed IAM policy ${POLICY_ARN}"
+else
   run aws iam create-policy --policy-name "$POLICY_NAME" \
     --policy-document "$POLICY_DOC" >/dev/null
   did "created IAM policy ${POLICY_ARN}"
@@ -279,7 +349,9 @@ fi
 # IAM role
 #
 # The sub condition is a list, so one role can serve several service accounts.
-# Both EFS CSI service accounts are included.
+# Both EFS CSI service accounts are included. The audience is pinned too: the
+# controller's projected token is requested with audience "openshift". For a
+# custom OIDC provider that key is <provider>:aud; there is no sts:aud key.
 # ---------------------------------------------------------------------------
 
 log "IAM role ${ROLE_NAME}"
@@ -287,6 +359,7 @@ log "IAM role ${ROLE_NAME}"
 TRUST_DOC="$(jq -n \
   --arg provider_arn "${OIDC_ARN}" \
   --arg sub_key "${OIDC_PROVIDER}:sub" \
+  --arg aud_key "${OIDC_PROVIDER}:aud" \
   '{
     Version: "2012-10-17",
     Statement: [{
@@ -295,6 +368,7 @@ TRUST_DOC="$(jq -n \
       Action: "sts:AssumeRoleWithWebIdentity",
       Condition: {
         StringEquals: {
+          ($aud_key): "openshift",
           ($sub_key): [
             "system:serviceaccount:openshift-cluster-csi-drivers:aws-efs-csi-driver-operator",
             "system:serviceaccount:openshift-cluster-csi-drivers:aws-efs-csi-driver-controller-sa"
@@ -323,47 +397,6 @@ run aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_AR
 did "attached policy to ${ROLE_NAME}"
 
 # ---------------------------------------------------------------------------
-# EFS filesystem
-#
-# Adopt by Name tag plus cluster tag. Creating a second filesystem on a re-run
-# would silently abandon a warm cache, so matching both tags matters.
-# ---------------------------------------------------------------------------
-
-log "EFS filesystem ${EFS_NAME}"
-
-FS_ID="$(aws efs describe-file-systems \
-  --query "FileSystems[?Tags[?Key=='Name' && Value=='${EFS_NAME}'] && Tags[?Key=='neuron-perf-cluster' && Value=='${INFRA_NAME}']].FileSystemId | [0]" \
-  --output text 2>/dev/null || true)"
-
-if [[ -n "$FS_ID" && "$FS_ID" != "None" ]]; then
-  ok "Adopting existing filesystem ${FS_ID}"
-else
-  if [[ "$DRY_RUN" == "true" ]]; then
-    warn "Would create a filesystem; using placeholder ID for the rest of this dry run"
-    FS_ID="fs-DRYRUN"
-  else
-    ENCRYPT_FLAG="--no-encrypted"
-    [[ "$EFS_ENCRYPTED" == "true" ]] && ENCRYPT_FLAG="--encrypted"
-    FS_ID="$(aws efs create-file-system \
-      --performance-mode "$EFS_PERFORMANCE_MODE" \
-      --throughput-mode "$EFS_THROUGHPUT_MODE" \
-      $ENCRYPT_FLAG \
-      --tags "Key=Name,Value=${EFS_NAME}" \
-             "Key=neuron-perf-cluster,Value=${INFRA_NAME}" \
-      --query FileSystemId --output text)"
-    ok "Created ${FS_ID}, waiting for it to become available"
-    for _ in $(seq 1 60); do
-      state="$(aws efs describe-file-systems --file-system-id "$FS_ID" \
-        --query 'FileSystems[0].LifeCycleState' --output text)"
-      [[ "$state" == "available" ]] && break
-      sleep 5
-    done
-    [[ "$state" == "available" ]] || die "Filesystem ${FS_ID} did not become available"
-    ok "Available"
-  fi
-fi
-
-# ---------------------------------------------------------------------------
 # Security group for the mount targets
 #
 # A dedicated group rather than a rule on the worker group, so removing this
@@ -372,11 +405,13 @@ fi
 
 log "Security group ${EFS_SG_NAME}"
 
+# Same pagination hazard as the filesystem lookup above.
 EFS_SG="$(aws ec2 describe-security-groups \
   --filters "Name=group-name,Values=${EFS_SG_NAME}" "Name=vpc-id,Values=${VPC_ID}" \
-  --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
+  --output json 2>/dev/null \
+  | jq -rs '[ .[].SecurityGroups[].GroupId ] | first // empty' || true)"
 
-if [[ -n "$EFS_SG" && "$EFS_SG" != "None" ]]; then
+if [[ -n "$EFS_SG" ]]; then
   ok "Already exists, reusing ${EFS_SG}"
 else
   if [[ "$DRY_RUN" == "true" ]]; then

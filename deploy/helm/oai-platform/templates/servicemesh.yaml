@@ -1,0 +1,23 @@
+{{- if .Values.serviceMesh.enabled }}
+# Red Hat OpenShift Service Mesh.
+#
+# No Namespace and no OperatorGroup: openshift-operators is a cluster-wide
+# namespace that exists on every OpenShift cluster and already has the global
+# OperatorGroup. Creating either would conflict.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: servicemeshoperator
+  namespace: {{ .Values.serviceMesh.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # Cluster-shared: the mesh operator may be serving other workloads, so
+    # removing this Application must not uninstall it.
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  channel: {{ .Values.serviceMesh.channel }}
+  installPlanApproval: Automatic
+  name: servicemeshoperator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+{{- end }}

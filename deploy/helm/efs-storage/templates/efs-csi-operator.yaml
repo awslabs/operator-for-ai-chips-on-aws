@@ -1,7 +1,4 @@
 {{- if .Values.efsCsiOperator.enabled }}
-{{- if and .Values.storageClass.create (not .Values.efs.fileSystemId) }}
-{{- fail "efs.fileSystemId is required. Run deploy/performance/bootstrap-efs.sh to create the filesystem, then pass the ID (GitOps: annotation efs_file_system_id on the ArgoCD cluster Secret; Helm: --set efs.fileSystemId=fs-...)." }}
-{{- end }}
 {{- if .Values.efsCsiOperator.createOperatorGroup }}
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup

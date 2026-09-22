@@ -1,4 +1,7 @@
 {{- if .Values.storageClass.create }}
+{{- if not .Values.efs.fileSystemId }}
+{{- fail "efs.fileSystemId is required. Run deploy/performance/bootstrap-efs.sh to create the filesystem, then pass the ID (GitOps: annotation efs_file_system_id on the ArgoCD cluster Secret; Helm: --set efs.fileSystemId=fs-...)." }}
+{{- end }}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:

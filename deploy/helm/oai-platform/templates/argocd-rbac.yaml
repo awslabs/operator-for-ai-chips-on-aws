@@ -1,0 +1,71 @@
+{{- if .Values.argocdRbac.create }}
+# ArgoCD permissions for exactly the kinds this chart renders, and nothing else.
+#
+# On the reference ROSA cluster the application controller is NOT cluster-admin
+# (`oc auth can-i '*' '*' --as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller`
+# returns no) and cannot create datascienceclusters, so without this the wave-2
+# DataScienceCluster sync fails.
+#
+# Self-bootstrapping: these two objects sync in wave -1, before anything that
+# needs them. The controller can do that because it natively holds create on
+# clusterroles plus the escalate and bind verbs (all three verified with
+# oc auth can-i on the reference cluster); RBAC escalation prevention would
+# otherwise block a role granting more than the creator has.
+#
+# Kinds rendered by this chart, and where each is covered:
+#   Namespace                    -> "" namespaces
+#   OperatorGroup, Subscription  -> operators.coreos.com
+#   DataScienceCluster           -> datasciencecluster.opendatahub.io
+#   ClusterRole, ClusterRoleBinding -> rbac.authorization.k8s.io
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-oai-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  # No delete. redhat-ods-operator and openshift-serverless are shared, and a
+  # previous version of this deployment deleted both when the component was
+  # disabled. Prune=false on the objects is the first guard; withholding the verb
+  # is the second, and it does not depend on an annotation surviving a refactor.
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups:
+      - operators.coreos.com
+    resources:
+      - subscriptions
+      - operatorgroups
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Also no delete: the DataScienceCluster is a cluster singleton shared with
+  # every other OpenShift AI consumer on the cluster.
+  - apiGroups:
+      - datasciencecluster.opendatahub.io
+    resources:
+      - datascienceclusters
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # This chart's own RBAC objects, so a re-sync can reconcile them.
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-oai-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.argocdRbac.serviceAccountName }}
+    namespace: {{ .Values.argocdRbac.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: argocd-oai-platform
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

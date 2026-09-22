@@ -1,0 +1,53 @@
+{{- if .Values.dataScienceCluster.create }}
+# DataScienceCluster: a cluster singleton, so on an existing OpenShift AI cluster
+# this object is ADOPTED, not created.
+#
+# That makes the set of fields written here the whole safety question. Under
+# ServerSideApply every field this manifest sets becomes a field this manifest
+# owns, and a field it owns is a field it can overwrite. So only the components
+# this feature needs are set:
+#
+#   kserve                       required - serves the model
+#   kserve.serving               required - KNative stack KServe fronts itself with
+#
+# and nothing else is enumerated. modelmeshserving, datasciencepipelines,
+# workbenches, kueue, ray, trustyai, modelregistry and trainingoperator are
+# deliberately absent: pinning them to Removed, as this chart's predecessor did,
+# switches off features the cluster owner may be running. Absent fields are left
+# to the operator's own defaulting on a fresh cluster and left alone on an
+# existing one.
+#
+# Prune=false for the same reason: deleting this object tears down the customer's
+# entire OpenShift AI installation.
+#
+# Field names verified against the DataScienceCluster v1 CRD with
+# `oc explain datasciencecluster.spec.components.kserve`.
+apiVersion: datasciencecluster.opendatahub.io/v1
+kind: DataScienceCluster
+metadata:
+  name: {{ .Values.dataScienceCluster.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    # The CRD arrives with the RHOAI operator subscribed in wave 1, so a
+    # client-side dry run in wave 2 would fail against a schema that is not
+    # registered yet.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false
+spec:
+  components:
+    kserve:
+      managementState: {{ .Values.dataScienceCluster.kserve.managementState }}
+      {{- with .Values.dataScienceCluster.kserve.defaultDeploymentMode }}
+      defaultDeploymentMode: {{ . }}
+      {{- end }}
+      serving:
+        managementState: {{ .Values.dataScienceCluster.kserve.serving.managementState }}
+        name: {{ .Values.dataScienceCluster.kserve.serving.name }}
+        {{- with .Values.dataScienceCluster.kserve.serving.ingressGatewayCertificateType }}
+        ingressGateway:
+          certificate:
+            type: {{ . }}
+        {{- end }}
+    {{- with .Values.dataScienceCluster.extraComponents }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

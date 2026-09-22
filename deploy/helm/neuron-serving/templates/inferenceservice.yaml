@@ -1,41 +1,38 @@
 {{- if .Values.inferenceService.enabled }}
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ .Values.inferenceService.serviceAccountName }}
-  namespace: {{ .Values.servingNamespace }}
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-{{- if and (eq .Values.model.source "hf") .Values.modelCache.download.tokenSecretName }}
-secrets:
-  - name: {{ .Values.modelCache.download.tokenSecretName }}
+{{- if and (eq .Values.model.source "pvc") (not .Values.modelCache.enabled) (not .Values.modelCache.existingClaim) }}
+{{- fail "model.source=pvc requires modelCache.enabled=true (or modelCache.existingClaim), otherwise there is no claim to read weights from." }}
 {{- end }}
----
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
-  name: {{ .Values.inferenceService.name }}
-  namespace: {{ .Values.servingNamespace }}
+  name: {{ include "neuron-serving.inferenceServiceName" . }}
+  namespace: {{ .Values.targetNamespace.name }}
   labels:
     opendatahub.io/dashboard: "true"
+    {{- include "neuron-serving.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "5"
+    # CRD comes from KServe, enabled by the DataScienceCluster that
+    # deploy/helm/oai-platform applies in its own wave 2.
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     # Knative gives up on a revision that does not become ready in time. A cold
-    # start here is a model download plus a full Neuron compile.
+    # start here is a model load plus a full Neuron compile, so this has to
+    # exceed the ServingRuntime startup-probe budget.
     serving.knative.dev/progress-deadline: {{ .Values.inferenceService.progressDeadline | quote }}
 spec:
   predictor:
-    serviceAccountName: {{ .Values.inferenceService.serviceAccountName }}
+    serviceAccountName: {{ include "neuron-serving.serviceAccountName" . }}
     minReplicas: {{ .Values.inferenceService.minReplicas }}
     maxReplicas: {{ .Values.inferenceService.maxReplicas }}
     model:
       modelFormat:
-        name: vllm-neuron
-      runtime: {{ .Values.servingRuntime.name }}
+        name: {{ .Values.servingRuntime.modelFormat.name }}
+      runtime: {{ include "neuron-serving.servingRuntimeName" . }}
       {{- if eq .Values.model.source "pvc" }}
-      storageUri: {{ printf "pvc://%s" .Values.modelCache.name | quote }}
+      storageUri: {{ printf "pvc://%s" (include "neuron-serving.modelCacheClaim" .) | quote }}
       {{- else }}
+      # Pulled from Hugging Face at startup. Gated repositories need a token: see
+      # model.tokenSecretName and NOTES.txt.
       storageUri: {{ printf "hf://%s" .Values.model.name | quote }}
       {{- end }}
       resources:
