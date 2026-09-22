@@ -56,6 +56,20 @@ their resources; adding that one line to any of them changes that. The
 here, because ArgoCD scopes `Prune` to sync-time pruning of resources no longer in git
 and `Delete` to app deletion, and those are separate options.
 
+Renaming an ApplicationSet has the same effect, which matters when upgrading from an
+earlier revision of this deployment. The generated Application name derives from the
+ApplicationSet, so a rename deletes the old Application, takes its resources with it,
+and installs the replacement from scratch. Two renames landed here: `neuron-perf-operator`
+became `aws-neuron-operator`, and `oai-hardened` became `oai-platform` plus
+`neuron-serving`. Applying the new file on a cluster running the old one was observed to
+uninstall and reinstall the Neuron operator, during which OLM reported
+`ConstraintsNotSatisfiable` for the recreated Subscription. That cluster had unschedulable
+nodes and no running catalog pods at the time, and the catalog publishes the version the
+chart asks for, so the resolution failure looks environmental rather than a chart problem.
+It has not been reproduced on a healthy cluster. If you are upgrading, expect the operator
+to be reinstalled, and check that its Subscription resolves before assuming the deployment
+is converged.
+
 ## Install
 
 Prerequisites: a ROSA cluster with Neuron nodes (inf2, trn1, trn2), `oc` logged in as
