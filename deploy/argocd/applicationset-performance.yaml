@@ -1,0 +1,285 @@
+# Performance-optimized AWS Neuron inference on ROSA, GitOps driven.
+#
+# Apply this one file. Everything cluster-specific is read from labels and
+# annotations on the ArgoCD cluster Secret that deploy/performance/bootstrap-efs.sh
+# writes, so nothing here needs editing and no Application ever needs patching.
+#
+#   oc apply -f applicationset-performance.yaml
+#
+# Config bus, set by the bootstrap script on that one Secret in openshift-gitops.
+#
+#   labels select which components a cluster gets
+#     argocd.argoproj.io/secret-type: cluster   required for the cluster generator to see it
+#     neuron_perf: "true"                       opts the cluster into this deployment
+#     enable_storage: "true"                    EFS CSI driver and StorageClass efs-sc
+#     enable_neuron_operator: "true"            the AWS Neuron operator
+#     enable_oai: "true"                        OpenShift AI and KServe, the platform layer
+#     enable_serving: "false"                   optional, suppresses the model workload
+#
+#   annotations carry data
+#     perf_repo_url, perf_repo_revision         where these charts are read from
+#     efs_file_system_id, efs_role_arn          injected into deploy/helm/efs-storage
+#     aws_region, vpc_id                        recorded for reference, unread here
+#
+# efs_file_system_id and efs_role_arn are the only annotations any chart receives,
+# because neither can be known until AWS has been provisioned. Everything else a
+# chart needs is chart configuration. See deploy/performance/README.md, section
+# "How configuration reaches the charts".
+#
+# enable_serving works as an opt-out, and it is the one label the bootstrap script
+# does not write. The workload therefore follows enable_oai by default, and
+# setting enable_serving=false on the Secret gives you the platform layer with no
+# model on it.
+#
+# PER-CLUSTER OVERRIDES WITHOUT FORKING. Every block lists two Helm value files:
+# values.yaml and values-<cluster>.yaml, where <cluster> is the ArgoCD cluster
+# name. Both paths are relative to the chart directory, and
+# ignoreMissingValueFiles means the second one is optional. To give one cluster a
+# different model or tensor parallel size, commit
+# deploy/helm/neuron-serving/values-<cluster>.yaml containing only the settings
+# that differ from values.yaml.
+#
+# One ApplicationSet per component, on purpose. Folding these into a single
+# matrix or list generator over a component list would give all four components
+# one shared selector, and each one needs its own so it can be toggled alone. The
+# repeated boilerplate buys those independent toggles.
+#
+# TURNING A TOGGLE OFF DELETES THAT COMPONENT'S RESOURCES. Read
+# deploy/performance/README.md, section "Turning a component off deletes its
+# resources", before flipping enable_storage or enable_oai on a cluster that
+# anything else depends on.
+#
+# The four Applications are independent and are not ordered relative to each
+# other, because ArgoCD sync waves order resources within one Application and not
+# across several. A PVC created before the EFS driver is running stays Pending and
+# binds once the driver is up, and each chart orders its own internals with waves.
+# ArgoCD's built-in local cluster has no Secret, and any selector on
+# argocd.argoproj.io/secret-type excludes it, which is why the bootstrap script
+# creates a cluster Secret pointing at https://kubernetes.default.svc.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: efs-storage
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_storage: "true"
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-efs-storage'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        path: deploy/helm/efs-storage
+        helm:
+          valueFiles:
+            - values.yaml
+            - 'values-{{.nameNormalized}}.yaml'
+          ignoreMissingValueFiles: true
+          valuesObject:
+            efs:
+              fileSystemId: '{{.metadata.annotations.efs_file_system_id}}'
+              roleARN: '{{.metadata.annotations.efs_role_arn}}'
+      destination:
+        name: '{{.name}}'
+        namespace: openshift-cluster-csi-drivers
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - SkipDryRunOnMissingResource=true
+          - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: aws-neuron-operator
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_neuron_operator: "true"
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-aws-neuron-operator'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        # The operator chart other install flows use, reused unmodified so it
+        # stays independently installable.
+        path: deploy/helm/aws-neuron-operator
+        helm:
+          valueFiles:
+            - values.yaml
+            - 'values-{{.nameNormalized}}.yaml'
+          ignoreMissingValueFiles: true
+      destination:
+        name: '{{.name}}'
+        namespace: aws-neuron-operator
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - SkipDryRunOnMissingResource=true
+          - ServerSideApply=true
+---
+# Platform layer: the operators KServe needs, and a DataScienceCluster that turns
+# on KServe and nothing else. Every object here is a cluster singleton that the
+# cluster owner may already have, so this block is configured for adoption rather
+# than ownership.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: oai-platform
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    # Keep the operators, namespaces and DataScienceCluster when enable_oai goes
+    # false and this Application is removed. The Prune=false annotations the
+    # chart puts on those objects do not cover this path: the ArgoCD docs scope
+    # Prune to sync-time pruning and Delete to app deletion, and those are
+    # separate options.
+    preserveResourcesOnDeletion: true
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_oai: "true"
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-oai-platform'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        path: deploy/helm/oai-platform
+        helm:
+          valueFiles:
+            - values.yaml
+            - 'values-{{.nameNormalized}}.yaml'
+          ignoreMissingValueFiles: true
+      destination:
+        name: '{{.name}}'
+        # Fallback only. Every resource in the chart sets its own namespace.
+        namespace: redhat-ods-operator
+      syncPolicy:
+        automated:
+          # Neither pruning nor self-healing. The RHOAI operator mutates the
+          # DataScienceCluster it owns, and fighting it produces a sync loop.
+          prune: false
+          selfHeal: false
+          allowEmpty: true
+        retry:
+          limit: 100
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - SkipDryRunOnMissingResource=true
+          # RHOAI and KServe ship CRDs too large for the annotation that
+          # client-side apply writes.
+          - ServerSideApply=true
+      ignoreDifferences:
+        - group: datasciencecluster.opendatahub.io
+          kind: DataScienceCluster
+          jsonPointers:
+            - /status
+---
+# Workload layer: one model, its ServingRuntime, and the compile cache PVC.
+# Disposable by design, so this block prunes and self-heals.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: neuron-serving
+  namespace: openshift-gitops
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            neuron_perf: "true"
+            enable_oai: "true"
+          matchExpressions:
+            # Absent counts as enabled, so the workload follows the platform
+            # unless a cluster opts out with enable_serving=false.
+            - key: enable_serving
+              operator: NotIn
+              values: ["false"]
+  template:
+    metadata:
+      name: '{{.nameNormalized}}-neuron-serving'
+    spec:
+      project: default
+      source:
+        repoURL: '{{.metadata.annotations.perf_repo_url}}'
+        targetRevision: '{{.metadata.annotations.perf_repo_revision}}'
+        path: deploy/helm/neuron-serving
+        helm:
+          # Every namespaced name in this chart derives from the Helm release
+          # name, which ArgoCD otherwise sets to the Application name. Pinning it
+          # keeps the InferenceService called neuron-serving instead of
+          # <cluster-id>-neuron-serving.
+          releaseName: neuron-serving
+          valueFiles:
+            - values.yaml
+            - 'values-{{.nameNormalized}}.yaml'
+          ignoreMissingValueFiles: true
+      destination:
+        name: '{{.name}}'
+        # Fallback only. Every resource in the chart sets its own namespace.
+        namespace: neuron-inference
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 100
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - SkipDryRunOnMissingResource=true
+          - ServerSideApply=true
+      ignoreDifferences:
+        - group: serving.kserve.io
+          kind: InferenceService
+          jsonPointers:
+            - /status

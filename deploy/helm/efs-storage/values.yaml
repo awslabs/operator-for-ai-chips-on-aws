@@ -1,0 +1,60 @@
+# Cluster-scoped storage plumbing for the Neuron performance deployment.
+#
+# This chart is driven two ways and must keep working in both:
+#   1. GitOps: the applicationset-performance.yaml ApplicationSet supplies
+#      efs.fileSystemId and efs.roleARN from annotations on the ArgoCD
+#      cluster Secret.
+#   2. Helm:  helm install efs-storage deploy/helm/efs-storage \
+#               --set efs.fileSystemId=fs-0123456789abcdef0 \
+#               --set efs.roleARN=arn:aws:iam::111122223333:role/my-cluster-aws-efs-csi-operator
+#
+# Both values are produced by deploy/performance/bootstrap-efs.sh.
+
+efs:
+  # EFS filesystem ID that backs every cache volume. Required.
+  fileSystemId: ""
+
+  # IAM role ARN assumed by the EFS CSI driver on STS clusters (ROSA is always
+  # STS). Passed to the operator as the ROLEARN environment variable, which the
+  # operator writes into its CredentialsRequest as spec.providerSpec.stsIAMRoleARN.
+  # Leave empty only on non-STS clusters using static credentials.
+  roleARN: ""
+
+# AWS EFS CSI Driver Operator (a Red Hat operator, not the community one).
+efsCsiOperator:
+  enabled: true
+  namespace: openshift-cluster-csi-drivers
+  channel: stable
+  installPlanApproval: Automatic
+  # The console creates an OperatorGroup in the install namespace if none
+  # exists. GitOps has to do it explicitly. Set to false if your cluster
+  # already has an OperatorGroup in efsCsiOperator.namespace, otherwise the
+  # sync will conflict with it.
+  createOperatorGroup: true
+
+storageClass:
+  create: true
+  name: efs-sc
+  # efs-ap provisions each PV as a subdirectory of the filesystem behind its own
+  # EFS access point. Note two EFS behaviours this implies:
+  #   - AWS allows at most 1000 access points per filesystem, so at most 1000
+  #     PVs per StorageClass.
+  #   - PVC.spec.resources.requests.storage is NOT enforced by EFS. Size requests
+  #     are cosmetic; monitor real usage in CloudWatch.
+  provisioningMode: efs-ap
+  # 0775 rather than 0777: the access point already assigns a GID per volume and
+  # OpenShift assigns a random UID, so world-write is unnecessary.
+  directoryPerms: "775"
+  gidRangeStart: "1000"
+  gidRangeEnd: "2000"
+  reclaimPolicy: Delete
+  # EFS provisions on demand, so binding immediately is fine and avoids the
+  # first consumer pod blocking on topology selection.
+  volumeBindingMode: Immediate
+
+# ArgoCD needs explicit permission on the cluster-scoped kinds this chart
+# manages. Prefer this over granting the application controller cluster-admin.
+argocdRbac:
+  create: true
+  namespace: openshift-gitops
+  serviceAccountName: openshift-gitops-argocd-application-controller

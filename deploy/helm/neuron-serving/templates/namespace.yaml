@@ -1,0 +1,19 @@
+{{- if .Values.targetNamespace.create }}
+# Target namespace for the serving workload.
+#
+# Set targetNamespace.create=false for a second release into this same namespace:
+# Helm will not adopt an object owned by another release, and under ArgoCD two
+# Applications claiming one Namespace is a shared-resource warning.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.targetNamespace.name }}
+  labels:
+    argocd.argoproj.io/managed-by: openshift-gitops
+    {{- if .Values.targetNamespace.istioInjection }}
+    istio-injection: enabled
+    {{- end }}
+    {{- include "neuron-serving.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+{{- end }}

@@ -1,0 +1,45 @@
+oai-platform {{ .Chart.Version }} installed as release {{ .Release.Name }}.
+
+This chart installs prerequisites only. The Neuron workload lives in
+deploy/helm/neuron-serving and is installed separately, once per model.
+
+What was applied:
+{{ if .Values.serviceMesh.enabled }}  - Subscription servicemeshoperator in {{ .Values.serviceMesh.namespace }}
+{{ end }}{{ if .Values.serverless.enabled }}  - Subscription serverless-operator in {{ .Values.serverless.namespace }}
+{{ end }}{{ if .Values.openshiftAI.enabled }}  - Subscription rhods-operator in {{ .Values.openshiftAI.namespace }} (channel {{ .Values.openshiftAI.channel }})
+{{ end }}{{ if .Values.dataScienceCluster.create }}  - DataScienceCluster/{{ .Values.dataScienceCluster.name }}, kserve only
+{{ else }}  - No DataScienceCluster (dataScienceCluster.create=false)
+{{ end }}
+Operators install asynchronously. Wait for them rather than polling by hand:
+
+  oc wait --for=jsonpath='{.status.state}'=AtLatestKnown \
+    subscription.operators.coreos.com/rhods-operator \
+    -n {{ .Values.openshiftAI.namespace }} --timeout=600s
+{{ if .Values.dataScienceCluster.create }}
+  oc wait --for=condition=Available \
+    datasciencecluster/{{ .Values.dataScienceCluster.name }} --timeout=900s
+{{ end }}
+Already running OpenShift AI? Install only what you are missing:
+
+  helm install oai-platform deploy/helm/oai-platform \
+    --set serviceMesh.enabled=false \
+    --set serverless.enabled=false \
+    --set openshiftAI.enabled=false \
+    --set dataScienceCluster.create=false
+
+That renders nothing but the ArgoCD ClusterRole, which is the correct answer for
+"I already run OpenShift AI, just give me the cache": go straight to
+deploy/helm/neuron-serving.
+
+Adoption note: this chart sets only spec.components.kserve on the
+DataScienceCluster. It does not enumerate workbenches, pipelines, Kueue, Ray,
+TrustyAI, the model registry or the training operator, so on a cluster that
+already runs OpenShift AI your existing settings for those are neither owned nor
+overwritten. Shared namespaces, OperatorGroups, Subscriptions and the
+DataScienceCluster carry argocd.argoproj.io/sync-options: Prune=false and this
+chart's ClusterRole withholds delete on namespaces and datascienceclusters, so
+removing the Application leaves them in place.
+
+Next:
+
+  helm install <model-release> deploy/helm/neuron-serving

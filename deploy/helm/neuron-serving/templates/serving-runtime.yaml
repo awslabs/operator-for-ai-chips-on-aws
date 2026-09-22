@@ -1,0 +1,130 @@
+{{- if .Values.servingRuntime.enabled }}
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: {{ include "neuron-serving.servingRuntimeName" . }}
+  namespace: {{ .Values.targetNamespace.name }}
+  labels:
+    opendatahub.io/dashboard: "true"
+    {{- include "neuron-serving.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    # CRD comes from KServe, enabled by the DataScienceCluster that
+    # deploy/helm/oai-platform applies in its own wave 2.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    opendatahub.io/recommended-accelerators: '["aws.amazon.com/neuron"]'
+    openshift.io/display-name: "vLLM for AWS Neuron (EFS compile cache)"
+    opendatahub.io/apiProtocol: REST
+spec:
+  annotations:
+    sidecar.istio.io/inject: "true"
+    serving.knative.openshift.io/enablePassthrough: "true"
+  supportedModelFormats:
+    - name: {{ .Values.servingRuntime.modelFormat.name }}
+      version: {{ .Values.servingRuntime.modelFormat.version | quote }}
+      autoSelect: {{ .Values.servingRuntime.modelFormat.autoSelect }}
+  containers:
+    - name: kserve-container
+      image: {{ .Values.servingRuntime.image }}
+      command:
+        - python
+        - -m
+        - vllm.entrypoints.openai.api_server
+      args:
+        - --port=8080
+        - --model=/mnt/models
+        - --served-model-name=$(MODEL_NAME)
+        - --tensor-parallel-size={{ .Values.servingRuntime.tensorParallelSize }}
+        - --max-num-seqs={{ .Values.servingRuntime.maxNumSeqs }}
+        - --max-model-len={{ .Values.servingRuntime.maxModelLen }}
+        - --block-size=16
+        {{- if .Values.servingRuntime.enablePrefixCaching }}
+        - --enable-prefix-caching
+        {{- else }}
+        - --no-enable-prefix-caching
+        {{- end }}
+        {{- if .Values.servingRuntime.enableChunkedPrefill }}
+        - --enable-chunked-prefill
+        {{- else }}
+        - --no-enable-chunked-prefill
+        {{- end }}
+      env:
+        - name: MODEL_NAME
+          value: {{ .Values.model.name }}
+        {{- if .Values.compileCache.enabled }}
+        # The documented Neuron persistent cache location. Default without this
+        # is /var/tmp/neuron-compile-cache inside the container, which is lost on
+        # pod restart. NEURON_CC_FLAGS --cache_dir would override this if set.
+        - name: NEURON_COMPILE_CACHE_URL
+          value: {{ .Values.compileCache.mountPath | quote }}
+        {{- end }}
+        {{- with .Values.servingRuntime.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      volumeMounts:
+        - name: shm
+          mountPath: /dev/shm
+        {{- if .Values.compileCache.enabled }}
+        - name: neuron-compile-cache
+          mountPath: {{ .Values.compileCache.mountPath }}
+        {{- end }}
+      # Probe split. A cold start is a model load plus a full Neuron compile; a
+      # warm start is a load against an already-populated EFS cache. One
+      # initialDelaySeconds cannot serve both, and putting the cold-start number
+      # on readinessProbe - which is what this chart's predecessor did with
+      # initialDelaySeconds: 900 on both probes - holds a warm pod out of service
+      # for the full 15 minutes even when it compiled nothing. That delay is the
+      # exact cost the shared cache exists to remove.
+      #
+      # startupProbe owns the long tolerance:
+      #   {{ .Values.servingRuntime.probes.startup.initialDelaySeconds }}s initial delay
+      #   + {{ .Values.servingRuntime.probes.startup.periodSeconds }}s period x {{ .Values.servingRuntime.probes.startup.failureThreshold }} failures
+      #   = {{ add .Values.servingRuntime.probes.startup.initialDelaySeconds (mul .Values.servingRuntime.probes.startup.periodSeconds .Values.servingRuntime.probes.startup.failureThreshold) }}s before the pod is declared failed,
+      # against the 900s the old single delay allowed.
+      #
+      # readinessProbe then only has to answer "is the server up", so its delay is
+      # short and a warm pod takes traffic in seconds.
+      #
+      # livenessProbe carries no initialDelaySeconds and does not need one: while
+      # a startupProbe is configured and has not yet succeeded, the kubelet runs
+      # no other probe, so liveness cannot fire during compilation. The Knative
+      # Revision CRD on the reference cluster states the same contract for its own
+      # startupProbe field: "If specified, no other probes are executed until this
+      # completes".
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: {{ .Values.servingRuntime.probes.startup.initialDelaySeconds }}
+        periodSeconds: {{ .Values.servingRuntime.probes.startup.periodSeconds }}
+        timeoutSeconds: {{ .Values.servingRuntime.probes.startup.timeoutSeconds }}
+        failureThreshold: {{ .Values.servingRuntime.probes.startup.failureThreshold }}
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: {{ .Values.servingRuntime.probes.readiness.initialDelaySeconds }}
+        periodSeconds: {{ .Values.servingRuntime.probes.readiness.periodSeconds }}
+        timeoutSeconds: {{ .Values.servingRuntime.probes.readiness.timeoutSeconds }}
+        failureThreshold: {{ .Values.servingRuntime.probes.readiness.failureThreshold }}
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        periodSeconds: {{ .Values.servingRuntime.probes.liveness.periodSeconds }}
+        timeoutSeconds: {{ .Values.servingRuntime.probes.liveness.timeoutSeconds }}
+        failureThreshold: {{ .Values.servingRuntime.probes.liveness.failureThreshold }}
+  volumes:
+    - name: shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: {{ .Values.servingRuntime.shmSize }}
+    {{- if .Values.compileCache.enabled }}
+    - name: neuron-compile-cache
+      persistentVolumeClaim:
+        claimName: {{ include "neuron-serving.compileCacheClaim" . }}
+    {{- end }}
+{{- end }}

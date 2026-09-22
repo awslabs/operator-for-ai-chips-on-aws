@@ -1,0 +1,37 @@
+{{- if .Values.efsCsiOperator.enabled }}
+{{- if .Values.efsCsiOperator.createOperatorGroup }}
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: aws-efs-csi-driver-operator
+  namespace: {{ .Values.efsCsiOperator.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec: {}
+---
+{{- end }}
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: aws-efs-csi-driver-operator
+  namespace: {{ .Values.efsCsiOperator.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  channel: {{ .Values.efsCsiOperator.channel }}
+  installPlanApproval: {{ .Values.efsCsiOperator.installPlanApproval }}
+  # The Red Hat operator. Do not substitute the community "AWS EFS Operator",
+  # which is a different, unsupported package.
+  name: aws-efs-csi-driver-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  {{- if .Values.efs.roleARN }}
+  config:
+    env:
+      # Read by the operator as stsIAMRoleARNEnvVar and written into its
+      # CredentialsRequest as spec.providerSpec.stsIAMRoleARN, which is how the
+      # aws-efs-cloud-credentials secret gets a role_arn on STS clusters.
+      - name: ROLEARN
+        value: {{ .Values.efs.roleARN | quote }}
+  {{- end }}
+{{- end }}

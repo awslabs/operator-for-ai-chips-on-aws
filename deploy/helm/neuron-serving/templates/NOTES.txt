@@ -1,0 +1,65 @@
+neuron-serving {{ .Chart.Version }} installed as release {{ .Release.Name }}.
+
+  namespace          {{ .Values.targetNamespace.name }}
+  InferenceService   {{ include "neuron-serving.inferenceServiceName" . }}
+  ServingRuntime     {{ include "neuron-serving.servingRuntimeName" . }}
+  ServiceAccount     {{ include "neuron-serving.serviceAccountName" . }}
+  model              {{ .Values.model.name }} (source: {{ .Values.model.source }})
+{{- if .Values.compileCache.enabled }}
+  compile cache      {{ include "neuron-serving.compileCacheClaim" . }} at {{ .Values.compileCache.mountPath }}{{ if not .Values.compileCache.create }} (existing claim, shared){{ end }}
+{{- end }}
+{{- if .Values.modelCache.enabled }}
+  model cache        {{ include "neuron-serving.modelCacheClaim" . }} at {{ .Values.modelCache.mountPath }}
+{{- end }}
+
+{{- if and (eq .Values.model.source "hf") (not .Values.model.tokenSecretName) }}
+
+ACTION REQUIRED IF THIS MODEL IS GATED
+--------------------------------------
+model.tokenSecretName is empty, so nothing in this release supplies a Hugging
+Face token, and this chart never creates a Secret containing one. Public
+repositories are fine. Gated repositories - which includes the default
+meta-llama/Llama-3.1-8B-Instruct - will fail the storage-initializer pull with a
+401 or 403.
+
+Create the Secret yourself, then point this release at it:
+
+  oc create secret generic hf-token \
+    --from-literal={{ .Values.model.tokenSecretKey }}=<your-hf-token> \
+    -n {{ .Values.targetNamespace.name }}
+
+  helm upgrade {{ .Release.Name }} deploy/helm/neuron-serving \
+    --set model.tokenSecretName=hf-token
+
+Under GitOps, set model.tokenSecretName in the Application's values and create the
+Secret out of band (or with your sealed-secret / ExternalSecret tooling). Do not
+commit the token.
+{{- else if eq .Values.model.source "hf" }}
+
+Hugging Face token: Secret {{ .Values.model.tokenSecretName }} (key
+{{ .Values.model.tokenSecretKey }}) in {{ .Values.targetNamespace.name }}. This
+chart does not create it. Confirm it exists:
+
+  oc get secret {{ .Values.model.tokenSecretName }} -n {{ .Values.targetNamespace.name }}
+{{- end }}
+
+Watch the rollout. First start compiles the model and can take many minutes; the
+startup probe allows up to {{ add .Values.servingRuntime.probes.startup.initialDelaySeconds (mul .Values.servingRuntime.probes.startup.periodSeconds .Values.servingRuntime.probes.startup.failureThreshold) }}s before giving up, and readiness begins only after
+that succeeds, so a warm-cache pod takes traffic within seconds instead of
+waiting out the whole compile budget.
+
+  oc wait --for=condition=Ready \
+    inferenceservice/{{ include "neuron-serving.inferenceServiceName" . }} \
+    -n {{ .Values.targetNamespace.name }} --timeout={{ .Values.inferenceService.progressDeadline | trimSuffix "s" }}s
+
+  oc get inferenceservice {{ include "neuron-serving.inferenceServiceName" . }} \
+    -n {{ .Values.targetNamespace.name }} -o jsonpath='{.status.url}{"\n"}'
+
+Serving a second model on the same cluster: reuse this release's compile cache so
+the shared entries are not duplicated, and skip the objects that already exist.
+
+  helm install <other-model> deploy/helm/neuron-serving \
+    --set targetNamespace.create=false \
+    --set compileCache.create=false \
+    --set compileCache.existingClaim={{ include "neuron-serving.compileCacheClaim" . }} \
+    --set model.name=<org/other-model>

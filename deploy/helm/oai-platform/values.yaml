@@ -1,0 +1,115 @@
+# Platform layer for Neuron model serving: the operators KServe needs, and a
+# DataScienceCluster that turns on KServe and nothing else.
+#
+# This chart is deliberately separate from deploy/helm/neuron-serving. The two
+# layers have different lifecycles and different blast radii: everything here is
+# cluster-singleton and shared with whatever else runs on the cluster, while
+# neuron-serving is per-model and installable many times over.
+#
+# Driven two ways and must keep working in both:
+#   1. GitOps: an ArgoCD Application pointing at this directory.
+#   2. Helm:  helm install oai-platform deploy/helm/oai-platform
+#
+# Sync waves: RBAC -1, Namespaces and OperatorGroups 0, Subscriptions 1,
+# DataScienceCluster 2.
+
+# --- Adoption safety -------------------------------------------------------
+#
+# Every resource in this chart may already exist on the target cluster, put
+# there by the RHOAI install flow or by the cluster owner. Two consequences,
+# both of which have bitten this deployment already:
+#
+#   1. Namespaces such as openshift-serverless, redhat-ods-operator and
+#      openshift-operators are shared. Removing this Application once deleted
+#      redhat-ods-operator and openshift-serverless, taking the customer's
+#      operators with them. Everything cluster-shared here therefore carries
+#      argocd.argoproj.io/sync-options: Prune=false.
+#   2. Under ServerSideApply, every field this chart writes becomes a field this
+#      chart owns. The DataScienceCluster below sets only the components the
+#      Neuron cache feature needs, so an existing cluster keeps its own
+#      workbenches, pipelines, model registry and Kueue settings.
+#
+# If a prerequisite is already installed, set its enabled to false and nothing
+# from that component is rendered at all.
+
+# Red Hat OpenShift Service Mesh. KServe's Serverless mode uses Istio as its
+# networking layer, so the DataScienceCluster kserve component requires it.
+serviceMesh:
+  enabled: true
+  channel: stable
+  # Subscription namespace. openshift-operators is a cluster-wide, always-shared
+  # namespace, so this chart never creates it.
+  namespace: openshift-operators
+
+# Red Hat OpenShift Serverless (Knative Serving). KServe Serverless mode
+# requires it.
+serverless:
+  enabled: true
+  channel: stable
+  namespace: openshift-serverless
+  # Set false when the namespace and OperatorGroup already exist and you would
+  # rather this chart did not touch them at all.
+  createNamespace: true
+  createOperatorGroup: true
+
+# Red Hat OpenShift AI (RHOAI). Ships the KServe and ServingRuntime CRDs the
+# neuron-serving chart depends on.
+openshiftAI:
+  enabled: true
+  channel: fast
+  namespace: redhat-ods-operator
+  createNamespace: true
+  createOperatorGroup: true
+
+# The DataScienceCluster.
+#
+# Independently switchable from the operator installs above, so "I already run
+# OpenShift AI, just give me the Neuron cache" is expressible as
+# dataScienceCluster.create=false with the operators left enabled or disabled as
+# appropriate.
+dataScienceCluster:
+  create: true
+
+  # RHOAI's own install flow creates a DataScienceCluster named default-dsc.
+  # Keeping that name means this chart adopts the existing object rather than
+  # creating a second one, which the operator would reject as a singleton
+  # violation. Override when you want a separate object under your own name.
+  name: default-dsc
+
+  # KServe, plus the KNative serving stack it needs. These are the only
+  # components this chart sets.
+  #
+  # No other component is enumerated on purpose. Listing modelmeshserving,
+  # datasciencepipelines, workbenches, kueue, ray, trustyai, modelregistry and
+  # trainingoperator as Removed - which this chart's predecessor did - takes
+  # ownership of those fields under ServerSideApply and switches off features the
+  # cluster owner may be using. Unset components are left to the operator's own
+  # defaulting on a fresh cluster and left untouched on an existing one.
+  kserve:
+    managementState: Managed
+    serving:
+      managementState: Managed
+      # Name of the KNativeServing resource the RHOAI operator creates in the
+      # knative-serving namespace.
+      name: knative-serving
+      ingressGatewayCertificateType: SelfSigned
+    # Optional. The CRD accepts Serverless or RawDeployment and defaults to
+    # Serverless when unset, so this is left empty rather than pinned.
+    defaultDeploymentMode: ""
+
+  # Escape hatch for components this chart does not model. Merged verbatim into
+  # spec.components, so anything set here is owned by this chart from then on.
+  # Example:
+  #   extraComponents:
+  #     dashboard:
+  #       managementState: Managed
+  extraComponents: {}
+
+# ArgoCD needs explicit permission on the cluster-scoped and custom kinds this
+# chart manages. Prefer this over granting the application controller
+# cluster-admin: on the reference cluster the controller is not cluster-admin
+# (oc auth can-i '*' '*' returns no) and cannot create datascienceclusters.
+argocdRbac:
+  create: true
+  namespace: openshift-gitops
+  serviceAccountName: openshift-gitops-argocd-application-controller

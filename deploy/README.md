@@ -9,7 +9,7 @@ Three installation methods for deploying the AWS Neuron Operator with prerequisi
 - Cluster with Neuron instance nodes (inf1, inf2, trn1, trn1n)
 - Helm 3.x (for install script and Helm options)
 
-## Option 1: ArgoCD (OpenShift GitOps) — recommended
+## Option 1: ArgoCD (OpenShift GitOps), recommended
 
 Uses sync waves to install operators in the correct order. Fully declarative and idempotent.
 
@@ -30,7 +30,13 @@ spec:
 EOF
 ```
 
-Grant the ArgoCD controller cluster-admin (required to create namespaces and operator subscriptions):
+Grant the ArgoCD controller cluster-admin, unless you would rather scope it. On the
+reference cluster the application controller can already create namespaces and operator
+Subscriptions, and cannot create ServiceAccounts, `jobs.batch` or `DataScienceCluster`
+objects. Check what yours can do with `oc auth can-i <verb> <resource>
+--as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller`.
+The charts under [performance/](performance/README.md) ship scoped ClusterRoles instead
+of using this binding.
 
 ```bash
 oc adm policy add-cluster-role-to-user cluster-admin \
@@ -131,6 +137,17 @@ For clusters without ArgoCD or Helm. Handles ordering via wait loops.
 # Skip both prereqs
 ./deploy/install.sh --skip-nfd --skip-kmm
 ```
+
+## Performance-optimized deployment
+
+The options above install the operator. To also get OpenShift AI, KServe serving, and a
+Neuron compile cache on shared EFS storage so that model compilation is paid once per
+cluster instead of once per pod, see [performance/README.md](performance/README.md).
+
+It follows the same GitOps flow (install the GitOps operator, apply one file) plus a
+one-time script for the AWS resources that cannot be created from inside the cluster.
+Read the section on what a component toggle deletes before enabling or disabling parts of
+it on a shared cluster.
 
 ## Verify
 

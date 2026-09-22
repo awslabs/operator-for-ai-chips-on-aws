@@ -229,6 +229,29 @@ jobs:
         APP_FILE="deploy/argocd/application.yaml"
         sed -i "s|targetRevision:.*|targetRevision: v${{ env.NEW_VERSION }}|" "$APP_FILE"
         echo "✓ Argo application pinned to v${{ env.NEW_VERSION }}"
+
+        # Performance deployment charts
+        for PERF_CHART in \
+          "deploy/helm/efs-storage/Chart.yaml" \
+          "deploy/helm/oai-platform/Chart.yaml" \
+          "deploy/helm/neuron-serving/Chart.yaml"; do
+          sed -i "s/^version:.*/version: ${{ env.NEW_VERSION }}/" "$PERF_CHART"
+          sed -i "s/^appVersion:.*/appVersion: ${{ env.NEW_VERSION }}/" "$PERF_CHART"
+          echo "✓ Updated $PERF_CHART"
+        done
+
+        # The performance ApplicationSet reads its revision from an annotation on
+        # the ArgoCD cluster Secret, which bootstrap-efs.sh sets from its own
+        # default. The documented flow copies no config file, and efs.env is
+        # gitignored, so the script's default is the value customers get: pin it
+        # there as well as in the example. Equivalent to pinning application.yaml.
+        PERF_ENV_FILE="deploy/performance/efs.env.example"
+        sed -i "s|^PERF_REPO_REVISION=.*|PERF_REPO_REVISION=v${{ env.NEW_VERSION }}|" "$PERF_ENV_FILE"
+        PERF_SCRIPT="deploy/performance/bootstrap-efs.sh"
+        sed -i 's|^: "${PERF_REPO_REVISION:=.*}"$|: "${PERF_REPO_REVISION:=v${{ env.NEW_VERSION }}}"|' "$PERF_SCRIPT"
+        grep -q ': "${PERF_REPO_REVISION:=v${{ env.NEW_VERSION }}}"' "$PERF_SCRIPT" \
+          || { echo "Error: failed to pin PERF_REPO_REVISION in $PERF_SCRIPT"; exit 1; }
+        echo "✓ Performance bootstrap pinned to v${{ env.NEW_VERSION }}"
         
         # Update kustomization operator image tag
         KUSTOMIZE_FILE="config/manager/kustomization.yaml"
@@ -252,7 +275,10 @@ jobs:
         fi
         
         # Commit release changes (local only — pushed via tag, not branch)
-        git add deploy/helm/aws-neuron-operator/Chart.yaml deploy/argocd/application.yaml config/manager/kustomization.yaml
+        git add deploy/helm/aws-neuron-operator/Chart.yaml deploy/argocd/application.yaml config/manager/kustomization.yaml \
+          deploy/helm/efs-storage/Chart.yaml deploy/helm/oai-platform/Chart.yaml \
+          deploy/helm/neuron-serving/Chart.yaml \
+          deploy/performance/efs.env.example deploy/performance/bootstrap-efs.sh
         git commit -m "Release v${{ env.NEW_VERSION }}: update Chart.yaml and pin Argo application"
         
         # Create tag on the release commit

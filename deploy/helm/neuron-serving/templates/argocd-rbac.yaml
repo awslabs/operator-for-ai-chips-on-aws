@@ -1,0 +1,82 @@
+{{- if .Values.argocdRbac.create }}
+# ArgoCD permissions for exactly the kinds this chart renders, and nothing else.
+#
+# Verified against the reference ROSA cluster with
+#   oc auth can-i create <resource> \
+#     --as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller
+# The controller natively CAN create persistentvolumeclaims, namespaces and
+# clusterroles, and CANNOT create serviceaccounts, jobs.batch,
+# servingruntimes.serving.kserve.io or inferenceservices.serving.kserve.io. It is
+# not cluster-admin ('*' '*' returns no). The predecessor chart's ClusterRole
+# omitted serviceaccounts and jobs, so the ServiceAccount in wave 2 and the
+# download Job in wave 3 would both have failed to sync.
+#
+# Kinds rendered by this chart, and where each is covered:
+#   Namespace                       -> "" namespaces
+#   PersistentVolumeClaim           -> "" persistentvolumeclaims
+#   ServiceAccount                  -> "" serviceaccounts
+#   Job                             -> batch jobs
+#   ServingRuntime, InferenceService -> serving.kserve.io
+#   ClusterRole, ClusterRoleBinding -> rbac.authorization.k8s.io
+#
+# Self-bootstrapping in wave -1: the controller holds create on clusterroles plus
+# the escalate and bind verbs natively (all verified with oc auth can-i), which is
+# what lets it install a role granting more than it already has.
+#
+# Names are release-derived so a second model's Application does not fight the
+# first over one ClusterRole. Set argocdRbac.create=false on later releases if you
+# would rather bind once for the whole namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-neuron-serving-{{ include "neuron-serving.fullname" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  # No delete on namespaces: this chart may be pointed at a namespace shared with
+  # other workloads, and pruning a namespace takes everything in it.
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumeclaims
+      - serviceaccounts
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups:
+      - serving.kserve.io
+    resources:
+      - servingruntimes
+      - inferenceservices
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # This chart's own RBAC objects, so a re-sync can reconcile them.
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-neuron-serving-{{ include "neuron-serving.fullname" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.argocdRbac.serviceAccountName }}
+    namespace: {{ .Values.argocdRbac.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: argocd-neuron-serving-{{ include "neuron-serving.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

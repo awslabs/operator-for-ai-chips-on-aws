@@ -1,0 +1,81 @@
+{{- if and .Values.modelCache.enabled .Values.modelCache.download.enabled }}
+# One-shot Job that populates the model cache PVC, so replicas stop pulling the
+# same weights from Hugging Face on every cold start.
+#
+# Unlike the compile cache, this is just files: no graph hashing, no cache keys,
+# so it is safe to run ahead of the serving pods.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "neuron-serving.fullname" . }}-model-download
+  namespace: {{ .Values.targetNamespace.name }}
+  labels:
+    {{- include "neuron-serving.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    # Job specs are immutable, so a re-sync with any changed field fails without
+    # this.
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "neuron-serving.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: download
+          image: {{ .Values.modelCache.download.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: MODEL_NAME
+              value: {{ .Values.model.name }}
+            - name: TARGET_DIR
+              value: {{ .Values.modelCache.mountPath }}
+            {{- with .Values.model.tokenSecretName }}
+            # Only referenced when model.tokenSecretName is set. Nothing in this
+            # chart creates the Secret; see NOTES.txt.
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.model.tokenSecretKey }}
+            {{- end }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              if [ -f "${TARGET_DIR}/.download-complete" ]; then
+                echo "Model already present in ${TARGET_DIR}, nothing to do."
+                exit 0
+              fi
+              pip install --no-cache-dir --quiet "huggingface_hub>=0.23"
+              python - <<'PY'
+              import os
+              from huggingface_hub import snapshot_download
+              target = os.environ["TARGET_DIR"]
+              snapshot_download(
+                  repo_id=os.environ["MODEL_NAME"],
+                  local_dir=target,
+                  token=os.environ.get("HF_TOKEN") or None,
+              )
+              PY
+              touch "${TARGET_DIR}/.download-complete"
+              echo "Model downloaded to ${TARGET_DIR}"
+          volumeMounts:
+            - name: model-cache
+              mountPath: {{ .Values.modelCache.mountPath }}
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: {{ include "neuron-serving.modelCacheClaim" . }}
+{{- end }}

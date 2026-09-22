@@ -1,0 +1,217 @@
+# One model, served by KServe on AWS Neuron, with the Neuron persistent compile
+# cache on shared EFS storage.
+#
+# Install once per model. Every namespaced resource name is derived from the
+# release name, so two releases can serve two models side by side in the same
+# namespace. The compile cache PVC is the deliberate exception: it is meant to be
+# shared, so its default name is fixed and the second release points at the
+# first's claim.
+#
+# Prerequisites:
+#   - deploy/helm/efs-storage        StorageClass efs-sc
+#   - deploy/helm/oai-platform       RHOAI operator and a kserve DataScienceCluster
+#   - deploy/helm/aws-neuron-operator  aws.amazon.com/neuron device plugin
+#
+# Driven two ways and must keep working in both:
+#   1. GitOps: an ArgoCD Application per model pointing at this directory.
+#   2. Helm:  helm install llama31-8b deploy/helm/neuron-serving
+#
+# Sync waves: RBAC -1, Namespace 0, PVCs and ServiceAccount 2,
+# ServingRuntime and download Job 3, InferenceService 5.
+
+# Resource-name prefix. Defaults to the release name, which is what makes a
+# second install collision-free. Override only if you need a name that differs
+# from the release.
+nameOverride: ""
+fullnameOverride: ""
+
+targetNamespace:
+  name: neuron-inference
+  # Set false for a second release into a namespace that already exists. Helm
+  # refuses to adopt an object owned by another release, and ArgoCD would report
+  # the namespace as shared between two Applications.
+  create: true
+  # Istio sidecar injection. KServe Serverless mode routes through the mesh.
+  istioInjection: true
+
+# --- The Neuron persistent compile cache -----------------------------------
+#
+# The reason this chart exists. Compiled NEFF artifacts land here on first
+# compile and every later pod, on any node, reads them instead of recompiling.
+# ReadWriteMany is load-bearing: with ReadWriteOnce only pods on a single node
+# share the cache, so scale-out and rescheduling pay full compilation again.
+#
+# SHARED ACROSS RELEASES ON PURPOSE. One EFS volume holds many models' entries,
+# keyed by a hash of the compiler flags and the XLA graph, so there is no
+# collision between models and no benefit to splitting them. Hence the fixed
+# default name and the create/existingClaim pair:
+#
+#   first model:   compileCache.create=true
+#   second model:  compileCache.create=false
+#                  compileCache.existingClaim=neuron-compile-cache
+compileCache:
+  enabled: true
+  # Create the PVC. False means use existingClaim, or an out-of-band claim of the
+  # same name.
+  create: true
+  # Not release-derived. Two releases sharing one cache is the point.
+  name: neuron-compile-cache
+  # Claim to mount when create is false. Empty falls back to name.
+  existingClaim: ""
+  storageClassName: efs-sc
+  accessMode: ReadWriteMany
+  # EFS does not enforce PVC size requests, so this is effectively a label.
+  # Track real growth in CloudWatch rather than trusting this number.
+  size: 50Gi
+  mountPath: /mnt/neuron-cache
+
+# --- Model weights on shared storage ---------------------------------------
+#
+# Off by default: it needs a Hugging Face token and a download Job, both extra
+# failure modes on the critical path. Unlike the compile cache this is per-model,
+# so the claim name is release-derived and NOT shared.
+modelCache:
+  enabled: false
+  # Create the PVC, or reference existingClaim instead.
+  create: true
+  # Defaults to <fullname>-model-cache.
+  name: ""
+  existingClaim: ""
+  storageClassName: efs-sc
+  accessMode: ReadWriteMany
+  size: 100Gi
+  mountPath: /mnt/models-cache
+  # One-shot Job that populates the PVC.
+  download:
+    enabled: false
+    image: registry.access.redhat.com/ubi9/python-311:latest
+
+model:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  # hf  = pull weights from Hugging Face at startup
+  # pvc = read weights from the modelCache PVC (requires modelCache.enabled)
+  source: hf
+
+  # Secret holding a Hugging Face token, for gated repositories such as the
+  # meta-llama default above.
+  #
+  # EMPTY BY DEFAULT AND NOTHING IN THIS CHART CREATES IT. A chart that created
+  # the Secret would have to carry the token in values, and a chart that
+  # referenced it unconditionally - as this chart's predecessor did - renders a
+  # ServiceAccount pointing at a Secret that does not exist. So the reference
+  # appears only when you set the name here:
+  #
+  #   oc create secret generic hf-token \
+  #     --from-literal=HF_TOKEN=hf_xxx -n neuron-inference
+  #   helm install ... --set model.tokenSecretName=hf-token
+  #
+  # See NOTES.txt after install.
+  tokenSecretName: ""
+  tokenSecretKey: HF_TOKEN
+
+servingRuntime:
+  enabled: true
+  # Defaults to <fullname>-runtime.
+  name: ""
+  image: registry.redhat.io/rhaiis/vllm-neuron-rhel9:3
+  tensorParallelSize: 2
+  maxNumSeqs: 4
+  maxModelLen: 4096
+  # These two are disabled in the existing examples/openshiftai runtime. They
+  # affect steady-state throughput rather than startup. Whether they are safe to
+  # enable on the Neuron backend has not been verified here, so the defaults
+  # match the existing example. Test before changing.
+  enablePrefixCaching: false
+  enableChunkedPrefill: false
+  shmSize: 2Gi
+
+  modelFormat:
+    name: vllm-neuron
+    version: "1"
+    # False, unlike the single-model examples in this repo. The InferenceService
+    # below names its runtime explicitly, so auto-selection is not needed, and
+    # two runtimes in one namespace auto-selecting the same format is ambiguous.
+    # Set true only if you intend other InferenceServices to pick this runtime up
+    # by format alone, and only for one runtime per namespace.
+    autoSelect: false
+
+  # --- Probes ------------------------------------------------------------
+  #
+  # A cold start here is a model load plus a full Neuron compilation; a warm one
+  # is a load against an already-populated EFS cache. The two differ by minutes,
+  # so they need different probes.
+  #
+  # The predecessor of this chart put initialDelaySeconds: 900 on BOTH readiness
+  # and liveness. Readiness gates traffic, so a pod that skipped compilation
+  # entirely because the cache was warm still sat out of service for 15 minutes,
+  # which is precisely the cost this feature exists to remove.
+  #
+  # Instead: the startup probe carries the long tolerance, readiness turns the pod
+  # into traffic as soon as /health answers, and liveness is not evaluated at all
+  # until startup succeeds, so it cannot kill a pod mid-compile. That last part is
+  # kubelet behaviour, and the Knative Revision CRD on the reference cluster
+  # documents it too: "If specified, no other probes are executed until this
+  # completes".
+  #
+  # Cold-start budget:
+  #   startup.initialDelaySeconds + startup.periodSeconds * startup.failureThreshold
+  #   30 + 10 * 120 = 1230s
+  # against the 900s the old single initialDelaySeconds allowed. Raise
+  # failureThreshold, not periodSeconds, to extend it: periodSeconds is also how
+  # quickly a warm pod is noticed as ready.
+  probes:
+    startup:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 120
+    readiness:
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    liveness:
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  # Additional env vars for the runtime container. The examples in this repo also
+  # set NEURON_CACHE_URL, which does not appear in the AWS Neuron persistent
+  # cache documentation; the documented variables are NEURON_COMPILE_CACHE_URL
+  # (set automatically by this chart when compileCache.enabled) and NEURON_CC_FLAGS
+  # --cache_dir. Add NEURON_CACHE_URL here if your image requires it.
+  extraEnv: []
+  #  - name: NEURON_CACHE_URL
+  #    value: /mnt/neuron-cache
+
+inferenceService:
+  enabled: true
+  # Defaults to <fullname>.
+  name: ""
+  # Defaults to <fullname>-sa.
+  serviceAccountName: ""
+  # Neuron devices requested per replica.
+  neuronDevices: "1"
+  memoryLimit: 100Gi
+  memoryRequest: 10Gi
+  # Knative scales to zero by default. With a multi-minute startup even a warm
+  # cache makes a cold request painful, so pinning one replica trades cost for
+  # latency. Set to 0 to allow scale-to-zero.
+  minReplicas: 1
+  maxReplicas: 1
+  progressDeadline: "1800s"
+
+# No separate compile pre-warm Job is shipped. The Neuron cache key is a hash of
+# the compiler flags and the XLA graph, so a pre-warm only helps if it reproduces
+# the identical graph, and populating the cache under a different key gives no
+# benefit at all. The first InferenceService start does the compile and every
+# later pod on any node reads it from the shared cache, which is the mechanism
+# that matters.
+
+# ArgoCD needs explicit permission on the kinds this chart renders. The names are
+# release-derived so two Applications do not fight over one ClusterRole. Set
+# create=false on later releases if you would rather bind once.
+argocdRbac:
+  create: true
+  namespace: openshift-gitops
+  serviceAccountName: openshift-gitops-argocd-application-controller

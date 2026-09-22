@@ -32,3 +32,6 @@ Dockerfile.cross
 bundle.Dockerfile
 
 .artifacts
+
+# Local bootstrap config for the performance deployment
+deploy/performance/efs.env
