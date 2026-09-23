@@ -58,7 +58,11 @@ spec:
           imagePullPolicy: IfNotPresent
           workingDir: /model
           env:
-            - name: NEURON_CACHE_URL
+            # NEURON_COMPILE_CACHE_URL is the variable documented in the AWS
+            # Neuron persistent cache docs; NEURON_CC_FLAGS --cache_dir takes
+            # precedence over it if both are set. The previous name here,
+            # NEURON_CACHE_URL, does not appear in that documentation.
+            - name: NEURON_COMPILE_CACHE_URL
               value: "/model/neuron_cache"
           command:
             - python
