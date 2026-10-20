@@ -30,6 +30,25 @@ RUN set -euo pipefail \
          sed -i 's/RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(9, 5)/RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(9, 4)/g' neuron_cdev.c; \
        fi
 
+# Patch for RHEL 9.6+ (kernel 5.14.0-570+) -- neuron 2.28+ only
+# Issue: 2.28.0.0 added a custom .get_unmapped_area fop (ncdev_get_unmapped_area
+#        -> nmmap_get_unmapped_area) for an EFA P2P 2MB-page optimization. Its
+#        helper macro references kernel routines that are not module-linkable on
+#        RHEL 9.6+.
+# Fix: Disable the custom fop so the kernel uses its default VA placement. The
+#      EFA P2P optimization is unavailable on RHEL/OpenShift.
+# The sed expressions are no-ops for older drivers, which do not contain the
+# Neuron 2.28 custom fop.
+RUN set -euo pipefail \
+    && RHEL_MINOR=$(echo "${KERNEL_VERSION}" | sed -n 's/.*el[0-9][_\.]\([0-9]*\).*/\1/p') \
+    && if [ "${RHEL_MINOR:-0}" -ge 6 ] 2>/dev/null; then \
+         echo "RHEL 9.${RHEL_MINOR} detected, disabling custom .get_unmapped_area fop..."; \
+         sed -i 's/mm_get_unmapped_area(current->mm, filep, addr, len, pgoff, flags)/(addr)/g' neuron_mmap.h; \
+         sed -i 's/current->mm->get_unmapped_area(filep, addr, len, pgoff, flags)/(addr)/g' neuron_mmap.h; \
+         sed -i 's/\.get_unmapped_area = ncdev_get_unmapped_area,/.get_unmapped_area = NULL,/' neuron_cdev.c; \
+         sed -i 's/static unsigned long ncdev_get_unmapped_area(/static unsigned long __maybe_unused ncdev_get_unmapped_area(/' neuron_cdev.c; \
+       fi
+
 RUN make -C "/lib/modules/${KERNEL_VERSION}/build" M="$(pwd)" modules \
     && cp neuron.ko "/lib/modules/${KERNEL_VERSION}/" \
     && depmod "${KERNEL_VERSION}" \
