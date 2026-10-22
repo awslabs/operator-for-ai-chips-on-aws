@@ -41,6 +41,35 @@ This operator is supported on:
 - Deploy overlay: `config/default` (includes CRDs, RBAC, manager, NFD rule)
 
 
+### AI-assisted development (Kiro)
+
+[Kiro](https://kiro.dev) is an AI development tool from AWS. This workflow uses
+its command-line agent, `kiro-cli`. If you don't have it yet, grab it from the
+[Kiro downloads page](https://kiro.dev/downloads/) (see the
+[CLI install guide](https://docs.kiro.dev/cli/installation/) for details), then
+sign in once with `kiro-cli login`.
+
+This repo ships an `implement` AI workflow for Kiro under
+`.kiro/`. It takes a GitHub issue through plan → test-driven code → validation
+(with a self-review gate), leaving all changes uncommitted for you to review.
+No installer — the files are picked up automatically. From the repo root:
+
+```bash
+kiro-cli chat --agent implement   # or: kiro-cli chat, then /agent implement
+```
+
+Then run the workflow with slash commands (type `/` to discover them). They
+take **no arguments** — each command asks for what it needs after you run it
+(e.g. `/implement-ingest` asks for the GitHub issue URL or number):
+
+```
+/implement            # entry point — asks what you want to do
+/implement-ingest     # →  /implement-plan  →  /implement-code  →  /implement-validate
+```
+
+For the full phase, artifact, and design reference, see
+[`.kiro/skills/implement/README.md`](.kiro/skills/implement/README.md).
+
 ### Build the manager image
 Currently we are supporting building the image for linux amd64 architecture only.
 By default the image is `ghcr.io/awslabs/operator-for-ai-chips-on-aws/operator:latest`. Override `IMG` to your registry.
