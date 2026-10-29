@@ -114,7 +114,7 @@ helm install aws-neuron-operator deploy/helm/aws-neuron-operator/
 helm install aws-neuron-operator deploy/helm/aws-neuron-operator/ \
   --set nfd.enabled=false \
   --set kmm.enabled=false \
-  --set deviceConfig.devicePluginVersion=2.30.0.0
+  --set deviceConfig.devicePluginVersion=2.33.1.0
 ```
 
 ## Option 3: Install Script

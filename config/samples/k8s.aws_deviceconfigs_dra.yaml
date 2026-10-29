@@ -5,9 +5,9 @@ metadata:
   namespace:  aws-neuron-operator
 spec:
   useInTreeDrivers: false
-  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.27.4.0
+  driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.31.7.0
   # DRA mode (mutually exclusive with devicePluginImage, customSchedulerImage, schedulerExtensionImage)
-  draDriverImage: public.ecr.aws/neuron/neuron-dra-driver:1.0.1
-  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:1.9.0
+  draDriverImage: public.ecr.aws/neuron/neuron-dra-driver:1.4.0
+  nodeMetricsImage: public.ecr.aws/neuron/neuron-monitor:1.13.0
   selector:
     feature.node.kubernetes.io/aws-neuron: "true"
