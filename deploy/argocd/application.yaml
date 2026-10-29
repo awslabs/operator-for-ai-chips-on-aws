@@ -23,7 +23,7 @@ spec:
       #   - name: deviceConfig.draDriverVersion
       #     value: "1.4.0"
       #   - name: deviceConfig.devicePluginVersion
-      #     value: "2.32.0.0"
+      #     value: "2.33.1.0"
       #   - name: deviceConfig.monitorVersion
       #     value: "1.13.0"
   destination:

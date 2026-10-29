@@ -213,9 +213,9 @@ metadata:
   namespace: aws-neuron-operator
 spec:
   driversImage: public.ecr.aws/os-partners/neuron-openshift/neuron-kernel-module:2.31.7.0  # actual pull at runtime will use <image>-$KERNEL_VERSION
-  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.32.0.0
+  devicePluginImage: public.ecr.aws/neuron/neuron-device-plugin:2.33.1.0
   customSchedulerImage: public.ecr.aws/eks-distro/kubernetes/kube-scheduler:v1.35.5-eks-1-35-10
-  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.32.0.0
+  schedulerExtensionImage: public.ecr.aws/neuron/neuron-scheduler:2.33.1.0
   imageRepoSecret:
     name: image-repo-secret
   selector:
