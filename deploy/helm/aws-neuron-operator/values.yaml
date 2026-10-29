@@ -11,7 +11,7 @@ namespace: aws-neuron-operator
 channel: Stable
 installPlanApproval: Automatic  # Set to Manual for production
 
-# DeviceConfig image versions (Neuron SDK 2.33.0)
+# DeviceConfig image versions (Neuron SDK 2.33, Neuron Helm chart 1.11.2)
 deviceConfig:
   # mode: "dra" uses DRA driver; "devicePlugin" uses device-plugin + scheduler
   mode: "devicePlugin"
